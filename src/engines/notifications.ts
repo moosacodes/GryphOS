@@ -1,8 +1,10 @@
 /**
- * Local notification candidates — useful, controllable, not spam for slides.
+ * Local notification candidates — useful, controllable, knowledge-aware.
+ * Bodies cite weight / rules / relative deadlines when known.
  */
-import type { AppData, Assessment, ChangeEvent } from "@/domain/types";
+import type { AppData, ChangeEvent } from "@/domain/types";
 import { formatInToronto } from "@/domain/dates";
+import { explainAssessment, formatWhy, isAssessmentOpen } from "./planningKnowledge";
 
 export type NotifKind =
   | "due_tomorrow"
@@ -44,14 +46,6 @@ function selectedIds(data: AppData): Set<string> {
   return new Set(data.courses.filter((c) => c.selected).map((c) => c.id));
 }
 
-function isOpen(a: Assessment): boolean {
-  if (a.submissionState === "submitted") return false;
-  if (a.state?.work === "completed" || a.state?.userCompleted === "confirmed") return false;
-  if (a.state?.missed || a.state?.dropped) return false;
-  if (a.pointsEarned != null || a.gradeDisplay) return false;
-  return true;
-}
-
 export function collectNotificationCandidates(
   data: AppData,
   prefs: NotificationPrefs = data.preferences.notifications ?? DEFAULT_NOTIFICATION_PREFS,
@@ -65,18 +59,33 @@ export function collectNotificationCandidates(
   const day = 864e5;
 
   for (const a of data.assessments) {
-    if (!sel.has(a.courseId) || !isOpen(a) || !a.due.iso) continue;
+    if (!sel.has(a.courseId) || !isAssessmentOpen(a) || !a.due.iso) continue;
     const due = Date.parse(a.due.iso);
     if (!Number.isFinite(due)) continue;
     const course = courses.get(a.courseId);
     const hours = (due - start) / 36e5;
+    const why = formatWhy(
+      explainAssessment(data, a, now).filter((r) =>
+        ["weight", "blueprint", "not_submitted", "relative_deadline", "best_n", "lab_tonight", "linked_material"].includes(
+          r.code,
+        ),
+      ),
+      3,
+    );
 
     if (prefs.dueTomorrow && hours > 12 && hours <= 36 && a.submissionState !== "submitted") {
       out.push({
         id: `n:due:${a.id}:${torontoDay(due)}`,
         kind: "due_tomorrow",
         title: `Due tomorrow · ${course?.code ?? ""}`,
-        body: `${a.title}${a.weightPercent != null ? ` (${a.weightPercent}%)` : ""} · ${formatInToronto(a.due.iso, "h:mm a")}`,
+        body: [
+          a.title,
+          a.weightPercent != null ? `${a.weightPercent}%` : null,
+          formatInToronto(a.due.iso, "h:mm a"),
+          why || null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
         href: `/assessment/${encodeURIComponent(a.id)}`,
         at: new Date(due - day).toISOString(),
       });
@@ -87,7 +96,9 @@ export function collectNotificationCandidates(
         id: `n:quiz:${a.id}`,
         kind: "quiz_closing",
         title: `Quiz closing soon · ${course?.code ?? ""}`,
-        body: `${a.title} closes ${formatInToronto(a.due.iso, "h:mm a")}`,
+        body: [`${a.title} closes ${formatInToronto(a.due.iso, "h:mm a")}`, why || null]
+          .filter(Boolean)
+          .join(" · "),
         href: a.url ?? `/assessment/${encodeURIComponent(a.id)}`,
         at: now.toISOString(),
       });
@@ -99,7 +110,12 @@ export function collectNotificationCandidates(
         id: `n:exam:${a.id}`,
         kind: "midterm_room",
         title: `${a.type === "final" ? "Final" : "Midterm"} · ${course?.code ?? ""}`,
-        body: room ? `${a.title} · Room ${room}` : `${a.title} · ${formatInToronto(a.due.iso)}`,
+        body: [
+          room ? `${a.title} · Room ${room}` : `${a.title} · ${formatInToronto(a.due.iso)}`,
+          why || null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
         href: `/assessment/${encodeURIComponent(a.id)}`,
         at: now.toISOString(),
       });

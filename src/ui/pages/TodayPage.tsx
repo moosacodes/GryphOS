@@ -249,6 +249,22 @@ export function TodayPage({
         </section>
       )}
 
+      
+      {(brief.risks.length > 0 || brief.recovery.length > 0) && (
+        <section aria-label="Risk and recovery" className="brief-plan-strip">
+          {brief.risks.slice(0, 3).map((r) => (
+            <div key={r.id} className="standing-chip" title={r.detail}>
+              <strong>Risk</strong> {r.courseCode}: {r.title} — {r.detail}
+            </div>
+          ))}
+          {brief.recovery.slice(0, 2).map((r) => (
+            <div key={r.id} className="standing-chip" title={r.detail}>
+              <strong>Recovery</strong> {r.courseCode}: {r.title} — {r.detail}
+            </div>
+          ))}
+        </section>
+      )}
+
       {brief.model.standingLines.length > 0 && (
         <div className="standing-strip" aria-label="Standing snapshot">
           {brief.model.standingLines.map((l) => (

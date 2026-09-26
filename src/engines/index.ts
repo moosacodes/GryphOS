@@ -15,3 +15,5 @@ export * from "./myday";
 export * from "./search";
 export * from "./notifications";
 export * from "./capture";
+export * from "./planningKnowledge";
+
