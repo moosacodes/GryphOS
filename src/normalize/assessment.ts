@@ -11,6 +11,7 @@ import type {
   SourceRecord,
   SubmissionState,
 } from "@/domain/types";
+import { DEFAULT_ITEM_STATE } from "@/domain/types";
 import type {
   RawCalendarEvent,
   RawEntityDropbox,
@@ -40,13 +41,20 @@ function inferType(title: string, fallback: AssessmentType): AssessmentType {
 }
 
 function baseAssessment(
-  partial: Omit<Assessment, "fieldProvenance" | "conflictIds" | "manualOverrides" | "updatedAt" | "sourceRecords"> & {
+  partial: Omit<
+    Assessment,
+    "fieldProvenance" | "conflictIds" | "manualOverrides" | "updatedAt" | "sourceRecords" | "state" | "attemptNumber"
+  > & {
     sourceRecords?: string[];
+    state?: Assessment["state"];
+    attemptNumber?: number | null;
   },
   provenance: Partial<Record<string, ProvenancedValue<unknown>>>,
 ): Assessment {
   return {
     ...partial,
+    attemptNumber: partial.attemptNumber ?? null,
+    state: partial.state ?? { ...DEFAULT_ITEM_STATE, submission: partial.submissionState },
     sourceRecords: partial.sourceRecords ?? [],
     fieldProvenance: provenance,
     conflictIds: [],
@@ -286,13 +294,17 @@ export function assessmentsFromAnnouncement(
 export function announcementFromNews(n: RawNewsItem, course: Course): Announcement | null {
   if (n.IsHidden) return null;
   const body = n.Body?.Text ?? n.Body?.Html?.replace(/<[^>]+>/g, " ") ?? "";
+  const bodyText = body.replace(/\s+/g, " ").trim();
+  const blob = `${n.Title} ${bodyText}`;
   return {
     id: `news:${course.id}:${n.Id}`,
     courseId: course.id,
     title: n.Title.trim(),
-    bodyText: body.replace(/\s+/g, " ").trim(),
+    bodyText,
     publishedAt: n.StartDate,
     url: `${COURSELINK_ORIGIN}/d2l/le/news/${course.orgUnitId}/${n.Id}/view`,
+    deadlineChangeSignal: /\b(due|deadline|extended|extension|postponed)\b/i.test(blob),
+    fromInstructorOrTa: true, // CourseLink news is typically staff-authored
   };
 }
 

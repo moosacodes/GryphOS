@@ -28,7 +28,7 @@ function bareAssessment(title: string, courseId = "course:1"): Assessment {
     url: null,
     notes: null,
     categoryId: null,
-    isBonus: false,
+    isBonus: false, attemptNumber: null, state: { availability: "unknown", work: "unknown", submission: "unknown", grading: "unknown", pastDueConfirmed: false, userCompleted: "unknown", dropped: false, missed: false, needsConfirmation: false },
     sourceRecords: [],
     fieldProvenance: {},
     conflictIds: [],

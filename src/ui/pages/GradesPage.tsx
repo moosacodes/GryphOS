@@ -7,7 +7,7 @@ import {
 } from "@/engines/grades";
 import { EmptyState } from "../components/EmptyState";
 
-export function GradesPage({ data }: { data: AppData }) {
+export function GradesPage({ data }: { data: AppData; update?: (patch: Partial<AppData> | ((prev: AppData) => AppData)) => Promise<AppData> }) {
   const courses = data.courses.filter((c) =>
     (data.preferences.selectedCourseIds ?? []).includes(c.id),
   );
@@ -18,8 +18,8 @@ export function GradesPage({ data }: { data: AppData }) {
   const course = courses.find((c) => c.id === courseId) ?? courses[0];
   const summary = useMemo(() => {
     if (!course) return null;
-    return summarizeCourseGrades(course, data.assessments, data.gradeCategories);
-  }, [course, data.assessments, data.gradeCategories]);
+    return summarizeCourseGrades(course, data.assessments, data.gradeCategories, data.academicRules, data.whatIfOverrides);
+  }, [course, data.assessments, data.gradeCategories, data.academicRules, data.whatIfOverrides]);
 
   if (!course || !summary) {
     return (
@@ -73,7 +73,8 @@ export function GradesPage({ data }: { data: AppData }) {
         <div className="card">
           <h3>Graded items</h3>
           <p style={{ fontSize: "2rem", margin: 0, fontWeight: 700 }}>{summary.gradedCount}</p>
-          <p className="small muted">{summary.ungradedCount} ungraded</p>
+          <p className="small muted">{summary.ungradedCount} ungraded ? {summary.missedCount} missed (not zeroed)</p>
+          {summary.capReason && <p className="small" style={{ color: "var(--danger)" }}>Cap: {summary.capReason}</p>}
         </div>
       </div>
 
@@ -94,7 +95,7 @@ export function GradesPage({ data }: { data: AppData }) {
                 <tr key={r.assessment.id}>
                   <td>
                     {r.assessment.title}
-                    {r.dropped ? " (dropped)" : ""}
+                    {r.missed ? " (missed)" : ""}{r.dropped ? " (dropped)" : ""}
                   </td>
                   <td>{r.assessment.weightPercent != null ? `${r.assessment.weightPercent}%` : "—"}</td>
                   <td>{r.percent != null ? `${r.percent.toFixed(1)}%` : "—"}</td>

@@ -5,11 +5,12 @@ import { effectiveStatus } from "@/storage/chromeStore";
 import { SyncButton } from "./SyncButton";
 
 const LINKS = [
-  { to: "/", label: "Dashboard", end: true },
+  { to: "/", label: "Today", end: true },
   { to: "/calendar", label: "Calendar" },
   { to: "/courses", label: "Courses" },
   { to: "/grades", label: "Grades" },
   { to: "/tasks", label: "Tasks" },
+  { to: "/changes", label: "Changes" },
   { to: "/documents", label: "Documents" },
   { to: "/settings", label: "Settings" },
 ];

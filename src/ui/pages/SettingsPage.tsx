@@ -1,6 +1,8 @@
 import type { AppData, ThemePreference } from "@/domain/types";
 import { COURSE_COLORS } from "@/domain/constants";
 import { buildIcs } from "@/engines/ics";
+import { mergeCalendarByUid, parseIcs } from "@/engines/icsImport";
+import { applyPersonalization } from "@/adapters/uofg/personalization";
 import { resetAllData } from "@/storage/repository";
 import { SyncButton } from "../components/SyncButton";
 import { openCourseLink } from "@/shared/actions";
@@ -54,6 +56,40 @@ export function SettingsPage({
     a.download = "gryphos-export.json";
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const importIcs = async (file: File) => {
+    const text = await file.text();
+    const incoming = parseIcs(text);
+    await update((prev) => ({
+      ...prev,
+      calendarEvents: mergeCalendarByUid(prev.calendarEvents ?? [], incoming),
+      actionLog: [
+        {
+          id: `act:ics:${Date.now()}`,
+          at: new Date().toISOString(),
+          action: "ics_import",
+          entityId: null,
+          before: (prev.calendarEvents ?? []).length,
+          after: incoming.length,
+          undone: false,
+        },
+        ...(prev.actionLog ?? []),
+      ].slice(0, 100),
+    }));
+  };
+
+  const importBackup = async (file: File) => {
+    const text = await file.text();
+    const parsed = JSON.parse(text) as AppData;
+    await update(() => parsed);
+  };
+
+  const applyScheduleFixtures = async () => {
+    await update((prev) => {
+      const p = applyPersonalization(prev.courses, prev.meetings, prev.people, prev.academicRules);
+      return { ...prev, ...p };
+    });
   };
 
   const exportIcs = () => {
@@ -173,7 +209,18 @@ export function SettingsPage({
           <h2>Export</h2>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <button type="button" className="btn" onClick={exportIcs}>Export calendar (.ics)</button>
-            <button type="button" className="btn" onClick={exportData}>Export local JSON</button>
+            <div className="field">
+          <label>Import ICS (UNI/STUDY/BUS, America/Toronto, UID dedupe)</label>
+          <input type="file" accept=".ics,text/calendar" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importIcs(f); e.target.value = ""; }} />
+        </div>
+        <div className="field">
+          <label>Import backup JSON</label>
+          <input type="file" accept="application/json,.json" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importBackup(f); e.target.value = ""; }} />
+        </div>
+        <button type="button" className="btn" onClick={() => void applyScheduleFixtures()}>
+          Apply personalization fixtures (2430/2030/2520 sections)
+        </button>
+        <button type="button" className="btn" onClick={exportData}>Export local JSON</button>
           </div>
         </div>
 

@@ -46,6 +46,10 @@ import {
 import { currentSemester, isLikelyCurrent, toCourse, toUser } from "@/normalize/course";
 import { reconcileAssessments } from "@/reconcile/merge";
 import { loadAppData, saveAppData } from "@/storage/repository";
+import { applyPersonalization } from "@/adapters/uofg/personalization";
+import { applyRelativeDeadlines, applySectionRelativeDeadlines } from "@/engines/rules";
+import { DEFAULT_ITEM_STATE } from "@/domain/types";
+import { detectAssessmentChanges } from "./changes";
 import { applyOutlineDocument } from "./applyOutline";
 import { mapLimit } from "./concurrency";
 
@@ -163,6 +167,8 @@ async function syncCourse(course: Course, le: string): Promise<{
         notes: null,
         categoryId: null,
         isBonus: false,
+        attemptNumber: null,
+        state: { ...DEFAULT_ITEM_STATE },
         sourceRecords: [],
         fieldProvenance: {
           due: {
@@ -235,6 +241,8 @@ function mergeOutlineAssessments(
     notes: null,
     categoryId: null,
     isBonus: false,
+    attemptNumber: null,
+    state: { ...DEFAULT_ITEM_STATE },
     sourceRecords: [],
     fieldProvenance: {
       weightPercent: {
@@ -320,6 +328,9 @@ export async function runSync(): Promise<void> {
           outlineDocumentId: prev?.outlineDocumentId ?? null,
           outlineStatus: prev?.outlineStatus ?? "not_checked",
           outlineStatusDetail: prev?.outlineStatusDetail ?? null,
+          lectureSection: prev?.lectureSection ?? null,
+          labSection: prev?.labSection ?? null,
+          tutorialSection: prev?.tutorialSection ?? null,
           instructorNames: prev?.instructorNames ?? [],
         };
       })
@@ -414,13 +425,72 @@ export async function runSync(): Promise<void> {
       };
     });
 
-    const reconciled = reconcileAssessments(combined);
-    const term = currentSemester(coursesAfter);
+    let reconciled = reconcileAssessments(combined);
+
+    const personalized = applyPersonalization(
+      coursesAfter,
+      data.meetings,
+      data.people,
+      data.academicRules,
+    );
+    data = {
+      ...data,
+      courses: personalized.courses,
+      meetings: personalized.meetings,
+      people: personalized.people,
+      academicRules: personalized.rules,
+    };
+
+    const derived = [] as typeof reconciled.assessments;
+    for (const c of personalized.courses) {
+      const mine = reconciled.assessments.filter((a) => a.courseId === c.id);
+      const withRel = applyRelativeDeadlines(
+        mine,
+        personalized.meetings,
+        personalized.rules.filter((r) => r.courseId === c.id),
+        c.startDate,
+      );
+      derived.push(
+        ...applySectionRelativeDeadlines(
+          withRel,
+          personalized.meetings,
+          personalized.rules.filter((r) => r.courseId === c.id),
+          c.labSection,
+        ),
+      );
+    }
+    const others = reconciled.assessments.filter(
+      (a) => !personalized.courses.some((c) => c.id === a.courseId),
+    );
+    reconciled = { ...reconciled, assessments: [...others, ...derived] };
+
+    const newChanges = detectAssessmentChanges(before.assessments, reconciled.assessments);
+    const changes = [...newChanges, ...(before.changes ?? []).filter((ch) => ch.read)].slice(0, 200);
+
+    reconciled = {
+      ...reconciled,
+      assessments: reconciled.assessments.map((a) => {
+        if (!a.due.iso || a.submissionState === "submitted") return a;
+        if (Date.parse(a.due.iso) >= Date.now()) return a;
+        if (a.state?.pastDueConfirmed) return a;
+        return {
+          ...a,
+          state: {
+            ...DEFAULT_ITEM_STATE,
+            ...a.state,
+            needsConfirmation: true,
+            submission: a.submissionState,
+          },
+        };
+      }),
+    };
+
+    const term = currentSemester(data.courses);
     const academicDates = seedAcademicDates(term);
 
     const outlineMsg =
       outlineSummaries.length > 0
-        ? `Outlines — ${outlineSummaries.join("; ")}`
+        ? `Outlines ? ${outlineSummaries.join("; ")}`
         : null;
 
     data = {
@@ -433,6 +503,7 @@ export async function runSync(): Promise<void> {
       sourceRecords: sources,
       announcements,
       academicDates,
+      changes,
       sync: failedCodes.length
         ? {
             status: "error",

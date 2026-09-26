@@ -22,7 +22,7 @@ export function CourseDetailPage({ data }: { data: AppData }) {
   const health = computeCourseHealth(
     course, data.assessments, data.conflicts, data.documents, data.people, data.meetings,
   );
-  const grades = summarizeCourseGrades(course, assessments, data.gradeCategories);
+  const grades = summarizeCourseGrades(course, assessments, data.gradeCategories, data.academicRules, data.whatIfOverrides);
   const conflicts = data.conflicts.filter(
     (c) => c.unresolved && assessments.some((a) => a.id === c.entityId),
   );

@@ -21,7 +21,7 @@ function item(id: string, dueIso: string, submitted: boolean = false): Assessmen
     url: null,
     notes: null,
     categoryId: null,
-    isBonus: false,
+    isBonus: false, attemptNumber: null, state: { availability: "unknown", work: "unknown", submission: "unknown", grading: "unknown", pastDueConfirmed: false, userCompleted: "unknown", dropped: false, missed: false, needsConfirmation: false },
     sourceRecords: [],
     fieldProvenance: {},
     conflictIds: [],

@@ -14,7 +14,7 @@ const course: Course = {
   selected: true,
   instructorNames: [],
   url: "",
-  outlineDocumentId: null, outlineStatus: "not_checked" as const, outlineStatusDetail: null,
+  outlineDocumentId: null, outlineStatus: "not_checked" as const, outlineStatusDetail: null, lectureSection: null, labSection: null, tutorialSection: null,
   updatedAt: "",
 };
 
@@ -31,7 +31,7 @@ function a(partial: Partial<Assessment> & Pick<Assessment, "id" | "title" | "wei
     url: null,
     notes: null,
     categoryId: null,
-    isBonus: false,
+    isBonus: false, attemptNumber: null, state: { availability: "unknown", work: "unknown", submission: "unknown", grading: "unknown", pastDueConfirmed: false, userCompleted: "unknown", dropped: false, missed: false, needsConfirmation: false },
     sourceRecords: [],
     fieldProvenance: {},
     conflictIds: [],

@@ -20,7 +20,7 @@ function base(partial: Partial<Assessment> & Pick<Assessment, "id" | "title">): 
     url: null,
     notes: null,
     categoryId: null,
-    isBonus: false,
+    isBonus: false, attemptNumber: null, state: { availability: "unknown", work: "unknown", submission: "unknown", grading: "unknown", pastDueConfirmed: false, userCompleted: "unknown", dropped: false, missed: false, needsConfirmation: false },
     sourceRecords: [],
     fieldProvenance: {},
     conflictIds: [],

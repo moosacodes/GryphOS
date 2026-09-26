@@ -11,7 +11,12 @@ export type SourceType =
   | "course_outline"
   | "uofg_academic_date"
   | "uofg_catalogue"
-  | "manual";
+  | "manual"
+  | "ics"
+  | "user_task"
+  | "rule_engine"
+  | "external_activity"
+  | "courselink_discussion";
 
 export type AssessmentType =
   | "assignment"
@@ -28,6 +33,40 @@ export type AssessmentType =
 export type DateCertainty = "exact" | "approximate" | "unknown" | "conflicting";
 
 export type SubmissionState = "submitted" | "not_submitted" | "unknown";
+
+export type AvailabilityState = "available" | "unavailable" | "unknown";
+export type WorkState = "not_started" | "in_progress" | "completed" | "unknown";
+export type GradingState = "ungraded" | "graded" | "returned" | "unknown";
+export type UserConfirm = "confirmed" | "denied" | "unknown";
+
+/** Multi-dimension academic item state ? not a single completed boolean. */
+export interface AcademicItemState {
+  availability: AvailabilityState;
+  work: WorkState;
+  submission: SubmissionState;
+  grading: GradingState;
+  /** Past-due stays unknown until user confirms */
+  pastDueConfirmed: boolean;
+  /** User claims work done (may still be not_submitted to CourseLink) */
+  userCompleted: UserConfirm;
+  /** Policy drop (best-N / drop-lowest) ? not the same as missed */
+  dropped: boolean;
+  /** Missed attempt ? never auto-fabricates a zero grade */
+  missed: boolean;
+  needsConfirmation: boolean;
+}
+
+export const DEFAULT_ITEM_STATE: AcademicItemState = {
+  availability: "unknown",
+  work: "unknown",
+  submission: "unknown",
+  grading: "unknown",
+  pastDueConfirmed: false,
+  userCompleted: "unknown",
+  dropped: false,
+  missed: false,
+  needsConfirmation: false,
+};
 
 export type SyncStatus = "idle" | "syncing" | "error" | "signed_out";
 
@@ -100,6 +139,7 @@ export interface Meeting {
   endTime: string | null;
   location: string | null;
   notes: string | null;
+  sectionCode: string | null;
 }
 
 export interface GradeCategory {
@@ -109,6 +149,9 @@ export interface GradeCategory {
   weightPercent: number | null;
   dropLowest: number;
   bestN: number | null;
+  /** Cap course grade unless this category meets threshold (e.g. exam) */
+  gradeCapPercent: number | null;
+  thresholdPercent: number | null;
 }
 
 export interface GradeRecord {
@@ -140,6 +183,8 @@ export interface Assessment {
   notes: string | null;
   categoryId: string | null;
   isBonus: boolean;
+  attemptNumber: number | null;
+  state: AcademicItemState;
   sourceRecords: string[];
   fieldProvenance: Partial<Record<string, ProvenancedValue<unknown>>>;
   conflictIds: string[];
@@ -154,13 +199,26 @@ export interface Announcement {
   bodyText: string;
   publishedAt: string | null;
   url: string | null;
+  /** Heuristic: announcement appears to change a deadline */
+  deadlineChangeSignal: boolean;
+  fromInstructorOrTa: boolean;
 }
+
+export type ResourcePurpose =
+  | "outline"
+  | "lecture"
+  | "lab"
+  | "assignment"
+  | "reading"
+  | "external_tool"
+  | "other";
 
 export interface Resource {
   id: string;
   courseId: string;
   title: string;
   kind: "textbook" | "link" | "file" | "other";
+  purpose: ResourcePurpose;
   url: string | null;
   notes: string | null;
 }
@@ -210,6 +268,9 @@ export interface Course {
   /** Result of last auto outline discovery attempt */
   outlineStatus: OutlineDiscoveryStatus;
   outlineStatusDetail: string | null;
+  lectureSection: string | null;
+  labSection: string | null;
+  tutorialSection: string | null;
   updatedAt: string;
 }
 
@@ -290,6 +351,115 @@ export interface Preferences {
   selectedCourseIds: string[] | null;
 }
 
+
+export type AcademicRuleKind =
+  | "best_n"
+  | "drop_lowest"
+  | "relative_deadline"
+  | "section_relative"
+  | "attempt"
+  | "grade_cap"
+  | "threshold";
+
+export interface AcademicRule {
+  id: string;
+  courseId: string | null;
+  kind: AcademicRuleKind;
+  label: string;
+  /** Generic params ? never hardcoded course IDs inside the engine */
+  params: Record<string, unknown>;
+  sourceType: SourceType;
+  confidence: number;
+}
+
+export interface EvidenceFact {
+  id: string;
+  courseId: string | null;
+  entityId: string | null;
+  field: string;
+  value: unknown;
+  label: string;
+  sourceType: SourceType;
+  sourceId: string;
+  retrievedAt: string;
+  confidence: number;
+}
+
+export type ChangeEventKind =
+  | "deadline_changed"
+  | "weight_changed"
+  | "new_assessment"
+  | "removed_assessment"
+  | "grade_posted"
+  | "announcement"
+  | "other";
+
+export interface ChangeEvent {
+  id: string;
+  courseId: string | null;
+  entityId: string | null;
+  kind: ChangeEventKind;
+  title: string;
+  detail: string;
+  createdAt: string;
+  read: boolean;
+  evidenceIds: string[];
+}
+
+export interface UserTask {
+  id: string;
+  courseId: string | null;
+  title: string;
+  notes: string | null;
+  dueIso: string | null;
+  done: boolean;
+  checklist: Array<{ id: string; label: string; done: boolean }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CalendarEventItem {
+  id: string;
+  uid: string;
+  title: string;
+  category: "UNI" | "STUDY" | "BUS" | "OTHER";
+  startIso: string;
+  endIso: string | null;
+  allDay: boolean;
+  location: string | null;
+  description: string | null;
+  exdates: string[];
+  courseId: string | null;
+  sourceType: SourceType;
+}
+
+export interface ActionLogEntry {
+  id: string;
+  at: string;
+  action: string;
+  entityId: string | null;
+  before: unknown;
+  after: unknown;
+  undone: boolean;
+}
+
+export interface ExternalActivity {
+  id: string;
+  courseId: string;
+  title: string;
+  tool: string;
+  url: string | null;
+  notes: string | null;
+}
+
+export interface WhatIfOverride {
+  assessmentId: string;
+  pointsEarned: number | null;
+  pointsPossible: number | null;
+  missed?: boolean;
+  dropped?: boolean;
+}
+
 export interface AppData {
   schemaVersion: number;
   user: UserProfile | null;
@@ -306,6 +476,14 @@ export interface AppData {
   sourceRecords: SourceRecord[];
   conflicts: Conflict[];
   documents: ImportedDocument[];
+  academicRules: AcademicRule[];
+  evidence: EvidenceFact[];
+  changes: ChangeEvent[];
+  userTasks: UserTask[];
+  calendarEvents: CalendarEventItem[];
+  actionLog: ActionLogEntry[];
+  externalActivities: ExternalActivity[];
+  whatIfOverrides: WhatIfOverride[];
   sync: SyncState;
   preferences: Preferences;
   pendingSync: boolean;

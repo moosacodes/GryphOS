@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   AppData,
   Assessment,
   CoursePolicy,
@@ -7,6 +7,8 @@ import type {
   Person,
   Resource,
 } from "@/domain/types";
+import { DEFAULT_ITEM_STATE } from "@/domain/types";
+import { rulesFromOutlineHints } from "@/engines/rules";
 import { reconcileAssessments } from "@/reconcile/merge";
 
 /** Merge a parsed outline document into app data for one course. */
@@ -23,7 +25,6 @@ export function applyOutlineDocument(
     (d) => d.courseId === courseId && !d.id.startsWith("auto:") && !!d.parseResult,
   );
   if (opts.preferExistingManual && existingManual && doc.id.startsWith("auto:")) {
-    // Keep manual outline as authority; still store auto doc for inspection
     const documents = [
       ...data.documents.filter((d) => !(d.courseId === courseId && d.id.startsWith("auto:"))),
       doc,
@@ -38,10 +39,14 @@ export function applyOutlineDocument(
       ? {
           ...c,
           outlineDocumentId: doc.id,
-          outlineStatus: result.assessments.length > 0 || result.confidence >= 0.45 ? "parsed" as const : "found" as const,
-          outlineStatusDetail: result.assessments.length > 0
-            ? `Outline parsed (${result.assessments.length} assessments)` 
-            : "Outline document applied",
+          outlineStatus:
+            result.assessments.length > 0 || result.confidence >= 0.45
+              ? ("parsed" as const)
+              : ("found" as const),
+          outlineStatusDetail:
+            result.assessments.length > 0
+              ? `Outline parsed (${result.assessments.length} assessments)`
+              : "Outline document applied",
           instructorNames:
             result.instructors.length > 0
               ? result.instructors.map((i) => i.name)
@@ -90,6 +95,8 @@ export function applyOutlineDocument(
     notes: oa.sourceSnippet ?? null,
     categoryId: oa.category ? `gcat:${courseId}:${oa.category}` : null,
     isBonus: false,
+    attemptNumber: null,
+    state: { ...DEFAULT_ITEM_STATE },
     sourceRecords: [],
     fieldProvenance: {
       weightPercent: {
@@ -135,6 +142,7 @@ export function applyOutlineDocument(
       courseId,
       title: t,
       kind: "textbook" as const,
+      purpose: "reading" as const,
       url: null,
       notes: null,
     })),
@@ -149,7 +157,16 @@ export function applyOutlineDocument(
       weightPercent: c.weightPercent,
       dropLowest: c.dropLowest,
       bestN: c.bestN,
+      gradeCapPercent: null,
+      thresholdPercent: null,
     })),
+  ];
+
+  const academicRules = [
+    ...data.academicRules.filter(
+      (r) => r.courseId !== courseId || r.sourceType !== "course_outline",
+    ),
+    ...rulesFromOutlineHints(courseId, result.gradingRules ?? []),
   ];
 
   const documents = [
@@ -172,5 +189,6 @@ export function applyOutlineDocument(
     policies,
     resources,
     gradeCategories,
+    academicRules,
   };
 }

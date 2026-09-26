@@ -34,6 +34,9 @@ export function toCourse(c: RawCourse, colorIndex = 0): Course {
     outlineDocumentId: null,
     outlineStatus: "not_checked",
     outlineStatusDetail: null,
+    lectureSection: null,
+    labSection: null,
+    tutorialSection: null,
     updatedAt: new Date().toISOString(),
   };
 }

@@ -1,27 +1,32 @@
-import type { Assessment, Course, GradeCategory } from "@/domain/types";
+﻿import type { Assessment, Course, GradeCategory, AcademicRule, WhatIfOverride } from "@/domain/types";
+import { applyGradeRules } from "./rules";
 
 export interface AssessmentGradeRow {
   assessment: Assessment;
   percent: number | null;
   counted: boolean;
   dropped: boolean;
+  missed: boolean;
 }
 
 export interface CourseGradeSummary {
   courseId: string;
   courseCode: string;
-  /** Official CourseLink displayed average if we have one — otherwise null */
   officialDisplay: string | null;
-  /** gryphOS weighted average on completed (non-dropped) work, 0..100 */
   calculatedPercent: number | null;
   completedWeight: number;
   remainingWeight: number;
   gradedCount: number;
   ungradedCount: number;
+  missedCount: number;
+  cappedPercent: number | null;
+  capReason: string | null;
   rows: AssessmentGradeRow[];
 }
 
 function assessmentPercent(a: Assessment): number | null {
+  // Missed ≠ zero unless user entered a score
+  if (a.state?.missed && a.pointsEarned == null) return null;
   if (a.pointsEarned != null && a.pointsPossible && a.pointsPossible > 0) {
     return (a.pointsEarned / a.pointsPossible) * 100;
   }
@@ -32,52 +37,48 @@ function assessmentPercent(a: Assessment): number | null {
   return null;
 }
 
-function applyDropRules(
-  items: Assessment[],
-  categories: GradeCategory[],
-): Set<string> {
-  const dropped = new Set<string>();
-  for (const cat of categories) {
-    const members = items.filter((a) => a.categoryId === cat.id);
-    if (cat.dropLowest > 0) {
-      const scored = members
-        .map((a) => ({ a, p: assessmentPercent(a) }))
-        .filter((x) => x.p != null)
-        .sort((x, y) => (x.p! - y.p!));
-      for (let i = 0; i < cat.dropLowest && i < scored.length; i++) {
-        dropped.add(scored[i].a.id);
-      }
-    }
-    if (cat.bestN != null && cat.bestN > 0) {
-      const scored = members
-        .map((a) => ({ a, p: assessmentPercent(a) }))
-        .filter((x) => x.p != null)
-        .sort((x, y) => (y.p! - x.p!));
-      const keep = new Set(scored.slice(0, cat.bestN).map((x) => x.a.id));
-      for (const m of members) {
-        if (assessmentPercent(m) != null && !keep.has(m.id)) dropped.add(m.id);
-      }
-    }
-  }
-  return dropped;
+function withWhatIf(a: Assessment, overrides: WhatIfOverride[]): Assessment {
+  const o = overrides.find((x) => x.assessmentId === a.id);
+  if (!o) return a;
+  return {
+    ...a,
+    pointsEarned: o.pointsEarned ?? a.pointsEarned,
+    pointsPossible: o.pointsPossible ?? a.pointsPossible,
+    state: {
+      ...a.state,
+      missed: o.missed ?? a.state?.missed ?? false,
+      dropped: o.dropped ?? a.state?.dropped ?? false,
+    },
+  };
 }
 
 export function summarizeCourseGrades(
   course: Course,
   assessments: Assessment[],
   categories: GradeCategory[] = [],
+  rules: AcademicRule[] = [],
+  whatIf: WhatIfOverride[] = [],
 ): CourseGradeSummary {
-  const items = assessments.filter((a) => a.courseId === course.id && !a.isBonus);
-  const dropped = applyDropRules(items, categories.filter((c) => c.courseId === course.id));
+  const items = assessments
+    .filter((a) => a.courseId === course.id && !a.isBonus)
+    .map((a) => withWhatIf(a, whatIf));
+
+  const effect = applyGradeRules(
+    items,
+    categories.filter((c) => c.courseId === course.id),
+    rules.filter((r) => !r.courseId || r.courseId === course.id),
+  );
 
   const rows: AssessmentGradeRow[] = items.map((a) => {
     const percent = assessmentPercent(a);
-    const isDropped = dropped.has(a.id);
+    const isDropped = effect.droppedIds.has(a.id) || !!a.state?.dropped;
+    const missed = !!a.state?.missed;
     return {
       assessment: a,
       percent,
-      counted: percent != null && !isDropped && a.weightPercent != null,
+      counted: percent != null && !isDropped && !missed && a.weightPercent != null,
       dropped: isDropped,
+      missed,
     };
   });
 
@@ -88,6 +89,8 @@ export function summarizeCourseGrades(
   for (const row of rows) {
     const w = row.assessment.weightPercent;
     if (w == null) continue;
+    // Dropped items remove their weight from both completed and remaining pools for best-N
+    if (row.dropped) continue;
     totalKnownWeight += w;
     if (row.counted && row.percent != null) {
       weightedSum += row.percent * w;
@@ -96,8 +99,14 @@ export function summarizeCourseGrades(
   }
 
   const remainingWeight = Math.max(0, totalKnownWeight - completedWeight);
-  const calculatedPercent =
-    completedWeight > 0 ? weightedSum / completedWeight : null;
+  let calculatedPercent = completedWeight > 0 ? weightedSum / completedWeight : null;
+  if (
+    calculatedPercent != null &&
+    effect.cappedCoursePercent != null &&
+    calculatedPercent > effect.cappedCoursePercent
+  ) {
+    calculatedPercent = effect.cappedCoursePercent;
+  }
 
   return {
     courseId: course.id,
@@ -107,12 +116,14 @@ export function summarizeCourseGrades(
     completedWeight,
     remainingWeight,
     gradedCount: rows.filter((r) => r.percent != null).length,
-    ungradedCount: rows.filter((r) => r.percent == null).length,
+    ungradedCount: rows.filter((r) => r.percent == null && !r.missed).length,
+    missedCount: rows.filter((r) => r.missed).length,
+    cappedPercent: effect.cappedCoursePercent,
+    capReason: effect.capReason,
     rows,
   };
 }
 
-/** Required average on remaining weight to hit target (0..100). */
 export function requiredAverageOnRemaining(
   summary: CourseGradeSummary,
   targetPercent: number,
@@ -121,8 +132,7 @@ export function requiredAverageOnRemaining(
   if (remainingWeight <= 0) return null;
   const current = calculatedPercent ?? 0;
   const total = completedWeight + remainingWeight;
-  const needed = (targetPercent * total - current * completedWeight) / remainingWeight;
-  return needed;
+  return (targetPercent * total - current * completedWeight) / remainingWeight;
 }
 
 export function requiredFinalExamScore(
@@ -134,9 +144,18 @@ export function requiredFinalExamScore(
   const otherCompleted = summary.completedWeight;
   const current = summary.calculatedPercent ?? 0;
   const otherWeightContribution = current * otherCompleted;
-  // Treat remaining non-final as unknown → only solve for final among remaining
   const totalWeight = otherCompleted + finalWeight;
   if (totalWeight <= 0) return null;
-  const needed = (targetPercent * totalWeight - otherWeightContribution) / finalWeight;
-  return needed;
+  return (targetPercent * totalWeight - otherWeightContribution) / finalWeight;
+}
+
+/** What-if: copy overrides and re-summarize without mutating persisted data. */
+export function whatIfSummary(
+  course: Course,
+  assessments: Assessment[],
+  categories: GradeCategory[],
+  rules: AcademicRule[],
+  overrides: WhatIfOverride[],
+): CourseGradeSummary {
+  return summarizeCourseGrades(course, assessments, categories, rules, overrides);
 }
