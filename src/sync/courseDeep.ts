@@ -71,6 +71,7 @@ import type { ChangeEvent, ExternalActivity, Person } from "@/domain/types";
 import { mapLimit } from "@/sync/concurrency";
 import { DEFAULT_CONCURRENCY, PAST_DAYS, FUTURE_DAYS } from "@/domain/constants";
 import { SignedOutError, HttpError } from "@/adapters/courselink/api";
+import { scheduleFromCalendarEvents, type CalendarScheduleBundle } from "@/sync/scheduleFromCalendar";
 
 const DAY = 864e5;
 
@@ -114,6 +115,7 @@ export interface CourseSyncResult {
   contentChanges: ChangeEvent[];
   coverage: CourseSourceCoverage;
   apiLog: ApiExplorationEntry[];
+  schedule: CalendarScheduleBundle;
 }
 
 export async function syncCourseDeep(
@@ -433,6 +435,10 @@ export async function syncCourseDeep(
   const checklists = await getChecklists(le, course.orgUnitId, explore);
   const groups = await getGroups(le, course.orgUnitId, explore);
 
+  const rangeStart = (course.startDate ?? "2026-09-10").slice(0, 10);
+  const rangeEnd = (course.endDate ?? "2026-12-04").slice(0, 10);
+  const schedule = scheduleFromCalendarEvents(course, events ?? [], rangeStart, rangeEnd);
+
   const coverage = buildCourseCoverage({
     courseId: course.id,
     orgUnitId: course.orgUnitId,
@@ -497,6 +503,7 @@ export async function syncCourseDeep(
     contentChanges: ingested.changes,
     coverage,
     apiLog: explore.entries,
+    schedule,
   };
 }
 

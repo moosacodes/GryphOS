@@ -1,10 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { AppData } from "@/domain/types";
 import { applyMyDayConfirm, buildMyDay, type MyDayCta, type MyDayItem } from "@/engines/myday";
 import { EmptyState } from "../components/EmptyState";
 import { SyncButton } from "../components/SyncButton";
 import { openCourseLink } from "@/shared/actions";
+import { effectiveStatus } from "@/storage/chromeStore";
 
 function CtaButtons({
   item,
@@ -61,17 +62,15 @@ function TimelineRow({
           {item.weightPercent != null ? <span className="badge">{item.weightPercent}%</span> : null}
         </div>
         <div className="myday-title">
-          {item.href?.startsWith("/") ? (
-            <Link to={item.href}>{item.title}</Link>
-          ) : (
-            item.title
-          )}
+          {item.href?.startsWith("/") ? <Link to={item.href}>{item.title}</Link> : item.title}
         </div>
         <div className="myday-sub">{item.subtitle}</div>
         <CtaButtons item={item} onCta={onCta} />
         <div className="myday-links">
           {item.ctas
-            .filter((c) => c.kind === "open_url" || c.kind === "open_assessment" || c.kind === "open_course")
+            .filter(
+              (c) => c.kind === "open_url" || c.kind === "open_assessment" || c.kind === "open_course",
+            )
             .slice(0, 2)
             .map((c, i) => {
               if (c.kind === "open_url") {
@@ -83,7 +82,11 @@ function TimelineRow({
               }
               if (c.kind === "open_assessment") {
                 return (
-                  <Link key={i} to={`/assessment/${encodeURIComponent(c.assessmentId)}`} className="small">
+                  <Link
+                    key={i}
+                    to={`/assessment/${encodeURIComponent(c.assessmentId)}`}
+                    className="small"
+                  >
                     Open workspace
                   </Link>
                 );
@@ -100,6 +103,55 @@ function TimelineRow({
   );
 }
 
+function diagnose(data: AppData): string[] {
+  const lines: string[] = [];
+  const status = effectiveStatus(data.sync);
+  const selectedIds = data.preferences.selectedCourseIds ?? [];
+  const selected = data.courses.filter((c) => selectedIds.includes(c.id));
+  const assessments = data.assessments.filter((a) => selectedIds.includes(a.courseId));
+  const occs = (data.meetingOccurrences ?? []).filter((o) => selectedIds.includes(o.courseId));
+  const anns = data.announcements.filter((a) => selectedIds.includes(a.courseId));
+
+  if (status === "signed_out") {
+    lines.push("Signed out of CourseLink — sign in in this browser, then Sync.");
+  } else if (status === "error") {
+    lines.push(data.sync.message ?? "Last Sync failed.");
+  } else if (!data.sync.lastSyncedAt) {
+    lines.push("Never synced. Open CourseLink signed in, then hit Sync.");
+  } else if (selected.length === 0) {
+    lines.push("No courses selected. Pick courses under Setup or Settings.");
+  } else {
+    if (assessments.length === 0) {
+      lines.push(
+        "Sync returned no assessments for selected courses (dropbox/quizzes/calendar empty or blocked).",
+      );
+    }
+    if (occs.length === 0) {
+      lines.push(
+        "No class times yet — CourseLink calendar had no lecture/lab events, or none matched. Import a timetable ICS in Setup, or add meetings in Settings.",
+      );
+    }
+    const shell = selected.filter(
+      (c) =>
+        c.outlineStatus === "none_accessible" ||
+        c.outlineStatus === "blocked" ||
+        c.outlineStatus === "not_checked" ||
+        (!c.outlineDocumentId && assessments.filter((a) => a.courseId === c.id).length === 0),
+    );
+    for (const c of shell.slice(0, 4)) {
+      const detail = c.outlineStatusDetail ?? c.outlineStatus;
+      lines.push(`${c.code} outline: ${detail}`);
+    }
+    if (anns.length === 0 && assessments.length > 0) {
+      lines.push("No announcements ingested (News may be empty or 403 for these courses).");
+    }
+  }
+  if (data.sync.message && status === "idle") {
+    lines.push(`Last Sync: ${data.sync.message}`);
+  }
+  return lines;
+}
+
 export function TodayPage({
   data,
   update,
@@ -108,9 +160,12 @@ export function TodayPage({
   update: (patch: Partial<AppData> | ((prev: AppData) => AppData)) => Promise<AppData>;
 }) {
   const nav = useNavigate();
-  const model = buildMyDay(data);
+  const model = useMemo(() => buildMyDay(data), [data]);
   const name = data.user?.name?.split(" ")[0] ?? "there";
   const selected = (data.preferences.selectedCourseIds ?? []).length;
+  const status = effectiveStatus(data.sync);
+  const tips = useMemo(() => diagnose(data), [data]);
+  const totalItems = model.sections.reduce((n, s) => n + s.items.length, 0);
 
   const onCta = async (cta: MyDayCta) => {
     if (cta.kind === "confirm_complete") {
@@ -174,14 +229,16 @@ export function TodayPage({
         <div className="page-header">
           <div>
             <h1>My Day</h1>
-            <p>Your university OS — local, private, CourseLink-backed.</p>
+            <p>Your local CourseLink OS — schedule, deadlines, confirmations.</p>
           </div>
         </div>
         <EmptyState
           title="Build your semester"
-          body="Sign in to CourseLink in this browser, sync once, pick your courses. GryphOS keeps everything local."
+          body="Sign in to CourseLink in this browser, open any CourseLink page, then Sync. GryphOS keeps everything on this device."
           action={
-            <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", marginTop: "0.75rem" }}>
+            <div
+              style={{ display: "flex", gap: "0.5rem", justifyContent: "center", marginTop: "0.75rem" }}
+            >
               <button type="button" className="btn btn-primary" onClick={() => void openCourseLink(true)}>
                 Open CourseLink
               </button>
@@ -199,12 +256,40 @@ export function TodayPage({
         <div>
           <h1>My Day</h1>
           <p>
-            Hi {name}. After days away, this is the 30-second picture — classes, deadlines, changes,
-            confirmations.
+            Hi {name}. Classes, deadlines, changes, and anything that needs your answer — from real
+            Sync data.
           </p>
         </div>
         <SyncButton />
       </div>
+
+      {(status === "signed_out" || status === "error" || totalItems === 0) && tips.length > 0 && (
+        <div
+          className={`callout ${status === "signed_out" || status === "error" ? "callout-danger" : "callout-warn"}`}
+          style={{ marginBottom: "1rem" }}
+          role="status"
+        >
+          <strong>{totalItems === 0 ? "My Day has nothing to show yet" : "Sync needs attention"}</strong>
+          <ul className="small" style={{ margin: "0.4rem 0 0", paddingLeft: "1.1rem" }}>
+            {tips.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+          <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.55rem", flexWrap: "wrap" }}>
+            {status === "signed_out" && (
+              <button type="button" className="btn btn-sm" onClick={() => void openCourseLink(true)}>
+                Sign in on CourseLink
+              </button>
+            )}
+            <Link className="btn btn-sm" to="/setup">
+              Setup
+            </Link>
+            <Link className="btn btn-sm" to="/courses">
+              Courses
+            </Link>
+          </div>
+        </div>
+      )}
 
       {model.standingLines.length > 0 && (
         <div className="myday-standing card card-tight">
@@ -224,7 +309,13 @@ export function TodayPage({
         <section key={sec.id} className={`myday-section sec-${sec.id}`}>
           <h2>{sec.label}</h2>
           {sec.items.length === 0 ? (
-            <p className="muted small">Nothing here right now.</p>
+            <p className="muted small">
+              {sec.id === "right_now"
+                ? "Nothing in progress right now."
+                : sec.id === "needs_answer"
+                  ? "Nothing waiting on your confirmation."
+                  : "Nothing here right now."}
+            </p>
           ) : (
             <ul className="myday-list">
               {sec.items.map((item) => (

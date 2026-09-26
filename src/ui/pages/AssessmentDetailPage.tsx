@@ -125,12 +125,12 @@ export function AssessmentDetailPage({
       <div className="page-header">
         <div>
           <p className="small">
-            <Link to={course ? `/courses/${course.id}` : "/"}>â† {course?.code ?? "Course"}</Link>
+            <Link to={course ? `/courses/${course.id}` : "/"}>← {course?.code ?? "Course"}</Link>
           </p>
           <h1>{assessment.title}</h1>
           <p>
-            {course?.code} Â· {assessment.type}
-            {assessment.weightPercent != null ? ` Â· ${assessment.weightPercent}% of course` : " Â· weight unknown"}
+            {course?.code} · {assessment.type}
+            {assessment.weightPercent != null ? ` · ${assessment.weightPercent}% of course` : " · weight unknown"}
           </p>
         </div>
         <div className="workspace-actions">
@@ -205,7 +205,7 @@ export function AssessmentDetailPage({
               Points:{" "}
               {assessment.pointsEarned != null && assessment.pointsPossible != null
                 ? `${assessment.pointsEarned} / ${assessment.pointsPossible}`
-                : "â€”"}
+                : "—"}
             </li>
             <li>Dropped: {row?.dropped ? "Yes" : row?.provisionalDrop ? "Provisional" : "No"}</li>
             <li>
@@ -215,7 +215,7 @@ export function AssessmentDetailPage({
             </li>
           </ul>
           <Link to="/grades" className="small">
-            What-if calculator â†’
+            What-if calculator →
           </Link>
         </section>
 
@@ -326,7 +326,7 @@ export function AssessmentDetailPage({
         <section className="card">
           <h2>Checklist</h2>
           {checklist.length === 0 ? (
-            <p className="muted small">No personal checklist items linked. Use Quick Capture (Ctrl+K â†’ add task).</p>
+            <p className="muted small">No personal checklist items linked. Use Quick Capture (Ctrl+K → add task).</p>
           ) : (
             <ul className="clean-list">
               {checklist.map((t) => (

@@ -1,7 +1,7 @@
 {
   "name": "gryphos",
   "private": true,
-  "version": "1.7.0",
+  "version": "1.8.0",
   "type": "module",
   "description": "Privacy-first local-first academic OS for UofG CourseLink (Brave / Opera GX / Chromium)",
   "license": "MIT",

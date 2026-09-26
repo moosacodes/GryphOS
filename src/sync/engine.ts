@@ -25,6 +25,8 @@ import { loadAppData, saveAppData } from "@/storage/repository";
 import { applySectionConfig } from "@/adapters/uofg/personalization";
 import { applyOccurrenceDeadlines } from "@/engines/deadlines";
 import { patternsFromLegacyMeetings, generateOccurrences, courseKeyFromCode } from "@/domain/meetings";
+import type { MeetingOccurrence, RecurringMeetingPattern } from "@/domain/meetings";
+import type { Meeting, CalendarEventItem } from "@/domain/types";
 import { ensureTypedRule } from "@/domain/rules";
 import { DEFAULT_ITEM_STATE } from "@/domain/types";
 import { detectAssessmentChanges } from "./changes";
@@ -233,6 +235,10 @@ export async function runSync(): Promise<void> {
     const contentChanges: ChangeEvent[] = [];
     const sourceCoverage: CourseSourceCoverage[] = [];
     const apiExplorationLog: ApiExplorationEntry[] = [];
+    const calMeetings: Meeting[] = [];
+    const calPatterns: RecurringMeetingPattern[] = [];
+    const calOccurrences: MeetingOccurrence[] = [];
+    const calItems: CalendarEventItem[] = [];
 
     results.forEach((r, i) => {
       if (r.failed) failedCodes.push(selected[i].code);
@@ -256,6 +262,10 @@ export async function runSync(): Promise<void> {
       contentChanges.push(...r.contentChanges);
       sourceCoverage.push(r.coverage);
       apiExplorationLog.push(...r.apiLog);
+      calMeetings.push(...r.schedule.meetings);
+      calPatterns.push(...r.schedule.patterns);
+      calOccurrences.push(...r.schedule.occurrences);
+      calItems.push(...r.schedule.calendarItems);
 
       const courseId = selected[i].id;
       const hit = r.outline;
@@ -326,24 +336,60 @@ export async function runSync(): Promise<void> {
     coursesAfter = applySectionConfig(coursesAfter, sectionConfigs);
     data = { ...data, courses: coursesAfter, academicRules: (data.academicRules ?? []).map((r) => ensureTypedRule(r as never)) };
 
-    // Build meeting patterns/occurrences from known meetings + semester window (not from "now").
-    const patterns = [];
-    const occurrences = [];
+    // Meetings: keep manual / ICS-derived rows; replace CourseLink-calendar rows for selected courses.
+    const preservedMeetings = (before.meetings ?? []).filter(
+      (m) =>
+        !selected.some((c) => c.id === m.courseId) ||
+        (!m.id.startsWith("meet:cal:") && m.notes !== "From CourseLink calendar"),
+    );
+    const meetingsMerged = [...preservedMeetings, ...calMeetings];
+
+    // Build patterns/occurrences from meetings + calendar-derived patterns/discrete events
+    const patterns: RecurringMeetingPattern[] = [...calPatterns];
+    const occurrences: MeetingOccurrence[] = [];
     for (const c of coursesAfter) {
       const rangeStart = (c.startDate ?? "2026-09-10").slice(0, 10);
       const rangeEnd = (c.endDate ?? "2026-12-04").slice(0, 10);
-      const courseMeetings = data.meetings.filter((m) => m.courseId === c.id);
-      const pats = patternsFromLegacyMeetings(courseMeetings, rangeStart, rangeEnd, "ics");
-      patterns.push(...pats);
+      const courseMeetings = meetingsMerged.filter((m) => m.courseId === c.id);
+      const pats = patternsFromLegacyMeetings(
+        courseMeetings,
+        rangeStart,
+        rangeEnd,
+        courseMeetings.some((m) => m.id.startsWith("meet:cal:")) ? "courselink_calendar" : "ics",
+      );
+      // Avoid duplicating patterns already produced by scheduleFromCalendar
+      for (const pat of pats) {
+        if (!patterns.some((p) => p.id === pat.id)) patterns.push(pat);
+      }
       const key = courseKeyFromCode(c.code);
       for (const pat of pats) {
+        if (calPatterns.some((p) => p.id === pat.id)) continue;
         occurrences.push(...generateOccurrences(pat, [], key));
       }
     }
+    // Concrete CourseLink calendar occurrences (and pattern expansions from CL)
+    occurrences.push(...calOccurrences);
+    // Dedupe occurrences by id
+    const occSeen = new Set<string>();
+    const occDeduped = occurrences.filter((o) => {
+      if (occSeen.has(o.id)) return false;
+      occSeen.add(o.id);
+      return true;
+    });
+
+    const preservedCal = (before.calendarEvents ?? []).filter(
+      (e) =>
+        e.sourceType !== "courselink_calendar" ||
+        !e.courseId ||
+        !selected.some((c) => c.id === e.courseId),
+    );
+
     data = {
       ...data,
+      meetings: meetingsMerged,
       meetingPatterns: patterns,
-      meetingOccurrences: occurrences,
+      meetingOccurrences: occDeduped,
+      calendarEvents: [...preservedCal, ...calItems],
     };
 
     const typedRules = data.academicRules;
@@ -476,7 +522,14 @@ export async function runSync(): Promise<void> {
             status: "idle",
             lastSyncedAt: Date.now(),
             startedAt: null,
-            message: outlineMsg,
+            message: [
+              `${reconciled.assessments.filter((a) => selected.some((c) => c.id === a.courseId)).length} assessments`,
+              `${occDeduped.filter((o) => selected.some((c) => c.id === o.courseId)).length} class times`,
+              `${announcements.length} announcements`,
+              outlineMsg,
+            ]
+              .filter(Boolean)
+              .join(" · "),
           },
     };
 

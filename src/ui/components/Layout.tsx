@@ -7,21 +7,20 @@ import { CommandPalette } from "./CommandPalette";
 import { useState } from "react";
 
 const LINKS = [
-  { to: "/", label: "Today", end: true },
+  { to: "/", label: "My Day", end: true },
   { to: "/inbox", label: "Inbox" },
   { to: "/calendar", label: "Calendar" },
-  { to: "/tasks", label: "Tasks" },
   { to: "/grades", label: "Grades" },
   { to: "/courses", label: "Courses" },
   { to: "/search", label: "Search" },
-  { to: "/coverage", label: "Coverage" },
+  { to: "/tasks", label: "Tasks" },
   { to: "/settings", label: "Settings" },
 ];
 
 function syncLabel(status: ReturnType<typeof effectiveStatus>, lastSyncedAt: number | null): string {
   switch (status) {
     case "syncing":
-      return "Syncingâ€¦";
+      return "Syncing...";
     case "signed_out":
       return "Signed out";
     case "error":

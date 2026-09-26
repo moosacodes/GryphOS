@@ -1,8 +1,8 @@
+import { Link } from "react-router-dom";
 import type { AppData, ThemePreference } from "@/domain/types";
 import { COURSE_COLORS } from "@/domain/constants";
 import { buildIcs } from "@/engines/ics";
 import { mergeCalendarByUid, parseIcs } from "@/engines/icsImport";
-import { applyPersonalization } from "@/adapters/uofg/personalization";
 import { resetAllData } from "@/storage/repository";
 import { SyncButton } from "../components/SyncButton";
 import { openCourseLink } from "@/shared/actions";
@@ -85,12 +85,6 @@ export function SettingsPage({
     await update(() => parsed);
   };
 
-  const applyScheduleFixtures = async () => {
-    await update((prev) => {
-      const p = applyPersonalization(prev.courses, prev.meetings, prev.people, prev.academicRules);
-      return { ...prev, ...p };
-    });
-  };
 
   const exportIcs = () => {
     const selectedCourses = data.courses.filter((c) => selected.has(c.id));
@@ -274,9 +268,6 @@ export function SettingsPage({
           <label>Import backup JSON</label>
           <input type="file" accept="application/json,.json" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importBackup(f); e.target.value = ""; }} />
         </div>
-        <button type="button" className="btn" onClick={() => void applyScheduleFixtures()}>
-          Apply personalization fixtures (2430/2030/2520 sections)
-        </button>
         <button type="button" className="btn" onClick={exportData}>Export local JSON</button>
           </div>
         </div>
@@ -293,6 +284,17 @@ export function SettingsPage({
           >
             Reset local data
           </button>
+        </div>
+
+        <div className="card">
+          <h2>Diagnostics</h2>
+          <p className="small muted">
+            Per-source counts after Sync (what Brightspace actually returned). Use when something looks
+            empty — not a primary feature.
+          </p>
+          <Link className="btn btn-sm" to="/coverage">
+            Source coverage
+          </Link>
         </div>
       </div>
     </div>

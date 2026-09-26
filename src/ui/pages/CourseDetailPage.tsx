@@ -160,6 +160,29 @@ export function CourseDetailPage({ data }: { data: AppData }) {
         </a>
       </div>
 
+
+      {(course.outlineStatus === "blocked" ||
+        course.outlineStatus === "none_accessible" ||
+        course.outlineStatus === "not_checked" ||
+        (assessments.length === 0 && !course.outlineDocumentId)) && (
+        <div className="callout callout-warn" style={{ marginBottom: "1rem" }} role="status">
+          <strong>Outline / content status</strong>
+          <p className="small">
+            {course.outlineStatusDetail ??
+              (assessments.length === 0
+                ? "No assessments synced for this course yet. Run Sync on CourseLink while signed in."
+                : `Outline: ${course.outlineStatus}`)}
+          </p>
+          <p className="small muted">
+            If Brightspace blocks outline download, open the PDF in CourseLink Content or upload it under
+            Documents — then Sync again.
+          </p>
+          <Link className="btn btn-sm" to="/documents">
+            Documents
+          </Link>
+        </div>
+      )}
+
       <div className="grid grid-3" style={{ marginBottom: "1rem" }}>
         <div className="card card-tight">
           <h3>Standing</h3>

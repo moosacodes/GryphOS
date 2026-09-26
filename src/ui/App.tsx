@@ -23,7 +23,7 @@ export function App() {
   if (!ready) {
     return (
       <div className="boot-screen" style={{ padding: "2rem", color: "var(--text-muted)" }}>
-        Loading gryphOSâ€¦
+        Loading gryphOS...
       </div>
     );
   }

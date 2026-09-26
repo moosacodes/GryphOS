@@ -12,6 +12,7 @@ import type {
   SubmissionState,
 } from "@/domain/types";
 import { DEFAULT_ITEM_STATE } from "@/domain/types";
+import { isDeadlineCalendarEvent } from "@/normalize/calendarClassify";
 import type {
   RawCalendarEvent,
   RawEntityDropbox,
@@ -316,6 +317,8 @@ export function assessmentFromCalendarEvent(
 ): Assessment | null {
   const title = e.Title?.trim();
   if (!title || !e.StartDateTime) return null;
+  // Class / lab blocks belong on the schedule timeline, not as assessments
+  if (!isDeadlineCalendarEvent(title)) return null;
   const idNum = e.CalendarEventId ?? e.Id ?? title;
   const id = assessmentId(course.id, "cal", String(idNum));
   const due = exactDate(e.EndDateTime ?? e.StartDateTime);

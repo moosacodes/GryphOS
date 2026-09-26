@@ -21,20 +21,25 @@ async function withCourseLinkTab(): Promise<number> {
   return created.id;
 }
 
-export async function requestSync(): Promise<void> {
+export async function requestSync(): Promise<{ ok: boolean; error?: string }> {
   const api = getChrome();
   const tabs = await api.tabs.query({ url: `${COURSELINK_ORIGIN}/*` });
   const tab = tabs.find((t) => t.id !== undefined);
   if (!tab?.id) {
     await openCourseLink(false);
-    return;
+    return { ok: true };
   }
   try {
-    await api.tabs.sendMessage(tab.id, { type: "GRYPHOS_SYNC" });
-  } catch {
+    const res = (await api.tabs.sendMessage(tab.id, { type: "GRYPHOS_SYNC" })) as
+      | { ok?: boolean; error?: string }
+      | undefined;
+    if (res && res.ok === false) return { ok: false, error: res.error ?? "Sync failed" };
+    return { ok: true };
+  } catch (e) {
     const data = await loadAppData();
     await saveAppData({ ...data, pendingSync: true });
     await api.tabs.reload(tab.id);
+    return { ok: false, error: `Reloading CourseLink tab to inject sync (${String((e as Error).message ?? e)})` };
   }
 }
 
