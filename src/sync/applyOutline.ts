@@ -63,6 +63,7 @@ export function applyOutlineDocument(
         name: i.name,
         email: i.email,
         role: "instructor",
+        aliases: [],
         courseId,
       }),
     ),
@@ -72,6 +73,7 @@ export function applyOutlineDocument(
         name: t.name,
         email: t.email,
         role: "ta",
+        aliases: [],
         courseId,
       }),
     ),
@@ -159,6 +161,7 @@ export function applyOutlineDocument(
       bestN: c.bestN,
       gradeCapPercent: null,
       thresholdPercent: null,
+      brightspaceCategoryId: null,
     })),
   ];
 

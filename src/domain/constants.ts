@@ -1,6 +1,6 @@
 export const COURSELINK_ORIGIN = "https://courselink.uoguelph.ca";
 export const EXTENSION_NAME = "gryphOS";
-export const STORAGE_SCHEMA_VERSION = 3;
+export const STORAGE_SCHEMA_VERSION = 4;
 export const SYNC_STALE_MS = 15 * 60 * 1000;
 export const SYNC_TIMEOUT_MS = 120_000;
 export const DEFAULT_CONCURRENCY = 4;

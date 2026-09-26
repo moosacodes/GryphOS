@@ -1,48 +1,24 @@
 ﻿/**
- * Synchronization engine: CourseLink â†’ normalize â†’ reconcile â†’ local storage.
+ * Synchronization engine: CourseLink → normalize â†’ reconcile â†’ local storage.
  * Adapted from dawhatnow/gryphCal sync patterns (MIT).
  */
 import {
-  HttpError,
   SignedOutError,
-  getCalendarEvents,
-  getContentToc,
   getCourses,
-  getFolders,
-  getGradeObjects,
-  getMyGradeValues,
-  getMySubmissions,
-  getNews,
-  getQuizzes,
   getVersions,
   getWhoAmI,
 } from "@/adapters/courselink/api";
-import { assessmentId } from "@/domain/ids";
-import { exactDate, unknownDate } from "@/domain/dates";
-import {
-  discoverCourseOutline,
-  flattenContentTopics,
-  type OutlineDiscoveryHit,
-} from "@/adapters/courselink/discoverOutlines";
 import { seedAcademicDates } from "@/adapters/uofg/academicDates";
-import { COURSE_COLORS, DEFAULT_CONCURRENCY, FUTURE_DAYS, PAST_DAYS } from "@/domain/constants";
+import { COURSE_COLORS, DEFAULT_CONCURRENCY } from "@/domain/constants";
 import type {
   Announcement,
+  AnnouncementFact,
   AppData,
   Assessment,
   Course,
   OutlineDiscoveryStatus,
   SourceRecord,
 } from "@/domain/types";
-import {
-  announcementFromNews,
-  assessmentsFromAnnouncement,
-  applyGrades,
-  assessmentFromCalendarEvent,
-  fromFolder,
-  fromQuiz,
-  withSubmissions,
-} from "@/normalize/assessment";
 import { currentSemester, isLikelyCurrent, toCourse, toUser } from "@/normalize/course";
 import { reconcileAssessments } from "@/reconcile/merge";
 import { loadAppData, saveAppData } from "@/storage/repository";
@@ -52,205 +28,40 @@ import { patternsFromLegacyMeetings, generateOccurrences, courseKeyFromCode } fr
 import { ensureTypedRule } from "@/domain/rules";
 import { DEFAULT_ITEM_STATE } from "@/domain/types";
 import { detectAssessmentChanges } from "./changes";
-import { buildContentTree } from "./contentTree";
 import type { CourseContentItem, CourseContentModule } from "@/domain/content";
-import { getQuizAttempts, getDiscussionForums } from "@/adapters/courselink/api.extras";
 import { applyOutlineDocument } from "./applyOutline";
 import { mapLimit } from "./concurrency";
+import { syncCourseDeep } from "./courseDeep";
+import { buildEntityLinks } from "@/ingestion/entityLinking";
+import { applyDeadlineFacts } from "@/ingestion/applyClarifications";
+import { rebuildSearchIndex } from "@/ingestion/searchIndex";
+import type { LibraryResource } from "@/domain/content";
+import type { DiscussionForum, DiscussionPost, DiscussionTopicLocal } from "@/domain/discussions";
+import type { CourseSourceCoverage } from "@/domain/coverage";
+import type {
+  ApiExplorationEntry,
+  ExternalActivity,
+  FeedbackRecord,
+  GradeCategory,
+  GradeRecord,
+  QuizAttemptRecord,
+  ChangeEvent,
+} from "@/domain/types";
+import type { EntityLink, ExtractedFact } from "@/domain/facts";
+import { HttpError } from "@/adapters/courselink/api";
 
-const DAY = 864e5;
-
-async function safe<T>(p: Promise<T>, onError?: () => void): Promise<T | null> {
+async function safe<T>(p: Promise<T>): Promise<T | null> {
   try {
     return await p;
-  } catch (e) {
-    if (e instanceof SignedOutError) throw e;
-    if (!(e instanceof HttpError && (e.status === 403 || e.status === 404))) onError?.();
+  } catch (err) {
+    if (err instanceof SignedOutError) throw err;
+    if (!(err instanceof HttpError && (err.status === 403 || err.status === 404))) {
+      /* non-fatal */
+    }
     return null;
   }
 }
 
-function inWindow(a: Assessment, now = Date.now()): boolean {
-  if (!a.due.iso) return true;
-  const t = Date.parse(a.due.iso);
-  if (!Number.isFinite(t)) return true;
-  return t >= now - PAST_DAYS * DAY && t <= now + FUTURE_DAYS * DAY;
-}
-
-async function syncCourse(course: Course, le: string): Promise<{
-  assessments: Assessment[];
-  sources: SourceRecord[];
-  announcements: Announcement[];
-  outline: OutlineDiscoveryHit;
-  failed: boolean;
-  contentModules: CourseContentModule[];
-  contentItems: CourseContentItem[];
-  discussionNotes: string[];
-}> {
-  let failed = false;
-  const markFailed = () => {
-    failed = true;
-  };
-
-  const [folders, quizzes, gradeObjects, gradeValues, news, events, outlineHit] =
-    await Promise.all([
-      safe(getFolders(le, course.orgUnitId), markFailed),
-      safe(getQuizzes(le, course.orgUnitId), markFailed),
-      safe(getGradeObjects(le, course.orgUnitId)),
-      safe(getMyGradeValues(le, course.orgUnitId)),
-      safe(getNews(le, course.orgUnitId)),
-      safe(getCalendarEvents(le, course.orgUnitId)),
-      discoverCourseOutline(course, le).catch((e): OutlineDiscoveryHit => {
-        if (e instanceof SignedOutError) throw e;
-        return {
-          document: null,
-          parseResult: null,
-          score: 0,
-          status: "none_accessible",
-          statusDetail: `Outline discovery error: ${String((e as Error).message ?? e)}`,
-          candidatesTried: 0,
-        };
-      }),
-    ]);
-
-  const sources: SourceRecord[] = [];
-  const rawAssessments: Assessment[] = [];
-
-  for (const f of folders ?? []) {
-    const r = fromFolder(f, course);
-    if (r) {
-      rawAssessments.push(r.assessment);
-      sources.push(...r.sources);
-    }
-  }
-  for (const q of quizzes ?? []) {
-    const r = fromQuiz(q, course);
-    if (r) {
-      rawAssessments.push(r.assessment);
-      sources.push(...r.sources);
-    }
-  }
-  for (const e of events ?? []) {
-    const a = assessmentFromCalendarEvent(e, course);
-    if (a) rawAssessments.push(a);
-  }
-
-
-  for (const n of news ?? []) {
-    rawAssessments.push(...assessmentsFromAnnouncement(n, course));
-  }
-
-  const tocModules = await safe(getContentToc(le, course.orgUnitId));
-  if (tocModules?.length) {
-    for (const t of flattenContentTopics(tocModules)) {
-      if (!t.dueDate) continue;
-      if (!/\b(assignment|quiz|lab|project|mid[- ]?term|final|exam|homework|hw|test)\b/i.test(t.title)) {
-        continue;
-      }
-      const id = assessmentId(course.id, "content", String(t.id ?? t.title));
-      const due = exactDate(t.dueDate);
-      rawAssessments.push({
-        id,
-        courseId: course.id,
-        title: t.title,
-        type: /final/i.test(t.title)
-          ? "final"
-          : /mid[- ]?term/i.test(t.title)
-            ? "midterm"
-            : /quiz|test/i.test(t.title)
-              ? "quiz"
-              : /lab/i.test(t.title)
-                ? "lab"
-                : "assignment",
-        due,
-        start: unknownDate(),
-        end: unknownDate(),
-        weightPercent: null,
-        pointsPossible: null,
-        pointsEarned: null,
-        submissionState: "unknown",
-        submittedAt: null,
-        gradeDisplay: null,
-        url: t.url,
-        notes: null,
-        categoryId: null,
-        isBonus: false,
-        attemptNumber: null,
-        state: { ...DEFAULT_ITEM_STATE },
-        sourceRecords: [],
-        fieldProvenance: {
-          due: {
-            value: due,
-            sourceType: "courselink_content",
-            sourceId: String(t.id ?? t.title),
-            confidence: 0.7,
-            retrievedAt: new Date().toISOString(),
-          },
-        },
-        conflictIds: [],
-        manualOverrides: {},
-        updatedAt: new Date().toISOString(),
-      });
-    }
-  }
-
-  let items = rawAssessments.filter((a) => inWindow(a));
-  items = await mapLimit(items, DEFAULT_CONCURRENCY, async (d) => {
-    if (!d.id.includes(":dropbox:")) return d;
-    const folderId = Number(d.id.split(":").pop());
-    if (!Number.isFinite(folderId)) return d;
-    return withSubmissions(
-      d,
-      await safe(getMySubmissions(le, course.orgUnitId, folderId)),
-    );
-  });
-
-  items = applyGrades(items, gradeObjects ?? [], gradeValues ?? []);
-
-  const announcements = (news ?? [])
-    .map((n) => announcementFromNews(n, course))
-    .filter((x): x is Announcement => x != null);
-
-  const contentBuilt = tocModules?.length
-    ? buildContentTree(course.id, course.orgUnitId, tocModules)
-    : { modules: [] as CourseContentModule[], items: [] as CourseContentItem[] };
-
-  // Explore quiz attempts when quizzes present (403 → empty; never fabricate).
-  for (const q of quizzes ?? []) {
-    const attempts = await safe(getQuizAttempts(le, course.orgUnitId, q.QuizId));
-    if (attempts && attempts.length > 0) {
-      const aid = items.find((a) => a.id.includes(`:quiz:${q.QuizId}`));
-      if (aid) {
-        const completed = attempts.filter((x) => x.Completed);
-        if (completed.length) {
-          aid.submissionState = "submitted";
-          aid.submittedAt = completed[completed.length - 1].Completed;
-          aid.attemptNumber = completed[completed.length - 1].AttemptNumber;
-          aid.state = {
-            ...aid.state,
-            submission: "submitted",
-            work: "completed",
-            availability: "available",
-          };
-        }
-      }
-    }
-  }
-
-  const forums = await safe(getDiscussionForums(le, course.orgUnitId));
-  const discussionNotes = (forums ?? []).slice(0, 20).map((f) => f.Name);
-
-  return {
-    assessments: items,
-    sources,
-    announcements,
-    outline: outlineHit,
-    failed,
-    contentModules: contentBuilt.modules,
-    contentItems: contentBuilt.items,
-    discussionNotes,
-  };
-}
 
 function mergeOutlineAssessments(
   course: Course,
@@ -392,23 +203,59 @@ export async function runSync(): Promise<void> {
       (data.preferences.selectedCourseIds ?? []).includes(c.id),
     );
 
-    const results = await mapLimit(selected, DEFAULT_CONCURRENCY, (c) => syncCourse(c, le));
+    const results = await mapLimit(selected, DEFAULT_CONCURRENCY, (c) =>
+      syncCourseDeep(c, le, {
+        people: data.people ?? [],
+        prevLibrary: (before.libraryResources ?? []).filter((l) => l.courseId === c.id),
+        userId: data.user?.id ?? null,
+      }),
+    );
 
     const failedCodes: string[] = [];
     const assessments: Assessment[] = [];
     const sources: SourceRecord[] = [];
     const announcements: Announcement[] = [];
+    const announcementFacts: AnnouncementFact[] = [];
     const outlineSummaries: string[] = [];
     const contentModules: CourseContentModule[] = [];
     const contentItems: CourseContentItem[] = [];
+    const discussionForums: DiscussionForum[] = [];
+    const discussionTopics: DiscussionTopicLocal[] = [];
+    const discussionPosts: DiscussionPost[] = [];
+    const quizAttempts: QuizAttemptRecord[] = [];
+    const feedbackRecords: FeedbackRecord[] = [];
+    const gradeCategories: GradeCategory[] = [];
+    const gradeRecords: GradeRecord[] = [];
+    const libraryResources: LibraryResource[] = [];
+    const externalActivities: ExternalActivity[] = [];
+    let entityLinks: EntityLink[] = [];
+    const extractedFacts: ExtractedFact[] = [];
+    const contentChanges: ChangeEvent[] = [];
+    const sourceCoverage: CourseSourceCoverage[] = [];
+    const apiExplorationLog: ApiExplorationEntry[] = [];
 
     results.forEach((r, i) => {
       if (r.failed) failedCodes.push(selected[i].code);
       assessments.push(...r.assessments);
       sources.push(...r.sources);
       announcements.push(...r.announcements);
+      announcementFacts.push(...r.announcementFacts);
       contentModules.push(...(r.contentModules ?? []));
       contentItems.push(...(r.contentItems ?? []));
+      discussionForums.push(...r.discussionForums);
+      discussionTopics.push(...r.discussionTopics);
+      discussionPosts.push(...r.discussionPosts);
+      quizAttempts.push(...r.quizAttempts);
+      feedbackRecords.push(...r.feedbackRecords);
+      gradeCategories.push(...r.gradeCategories);
+      gradeRecords.push(...r.gradeRecords);
+      libraryResources.push(...r.libraryResources);
+      externalActivities.push(...r.externalActivities);
+      entityLinks.push(...r.entityLinks);
+      extractedFacts.push(...r.extractedFacts);
+      contentChanges.push(...r.contentChanges);
+      sourceCoverage.push(r.coverage);
+      apiExplorationLog.push(...r.apiLog);
 
       const courseId = selected[i].id;
       const hit = r.outline;
@@ -426,7 +273,6 @@ export async function runSync(): Promise<void> {
         data = applyOutlineDocument(data, courseId, hit.document, {
           preferExistingManual: hasManual,
         });
-        // Re-apply status after applyOutline (which may not set it)
         data = setCourseOutlineStatus(data, courseId, hit.status, hit.statusDetail);
       }
     });
@@ -471,7 +317,7 @@ export async function runSync(): Promise<void> {
 
     let reconciled = reconcileAssessments(combined);
 
-    // Runtime personalization: user section config only â€” never inject CIS fixtures.
+    // Runtime personalization: user section config only — never inject CIS fixtures.
     const sectionConfigs = (data.preferences as { sectionConfigs?: Array<{
       courseId: string; lectureSection?: string | null; labSection?: string | null; tutorialSection?: string | null;
     }> }).sectionConfigs ?? [];
@@ -506,8 +352,37 @@ export async function runSync(): Promise<void> {
     );
     reconciled = { ...reconciled, assessments: withDeadlines };
 
+    // Apply staff/announcement deadline clarifications
+    const clarified = applyDeadlineFacts(
+      reconciled.assessments,
+      announcementFacts,
+      extractedFacts,
+    );
+    reconciled = {
+      assessments: clarified.assessments,
+      conflicts: [...reconciled.conflicts, ...clarified.conflicts],
+    };
+
+    // Entity linking across sources
+    const linkBundle = buildEntityLinks({
+      assessments: reconciled.assessments,
+      contentItems,
+      library: libraryResources,
+      announcements,
+      announcementFacts,
+      gradeRecords,
+      feedback: feedbackRecords,
+      calendarEvents: data.calendarEvents ?? [],
+    });
+    entityLinks = [...entityLinks, ...linkBundle];
+
     const newChanges = detectAssessmentChanges(before.assessments, reconciled.assessments);
-    const changes = [...newChanges, ...(before.changes ?? []).filter((ch) => ch.read)].slice(0, 200);
+    // Inbox: real changes only — assessment diffs + content version updates (no sync churn)
+    const changes = [
+      ...contentChanges,
+      ...newChanges,
+      ...(before.changes ?? []).filter((ch) => ch.read),
+    ].slice(0, 300);
 
     reconciled = {
       ...reconciled,
@@ -532,16 +407,11 @@ export async function runSync(): Promise<void> {
 
     const outlineMsg =
       outlineSummaries.length > 0
-        ? `Outlines ? ${outlineSummaries.join("; ")}`
+        ? `Outlines — ${outlineSummaries.join("; ")}`
         : null;
 
-    // Preserve content for courses not in this sync selection
-    const preservedMods = (before.contentModules ?? []).filter(
-      (m) => !selected.some((c) => c.id === m.courseId),
-    );
-    const preservedItems = (before.contentItems ?? []).filter(
-      (m) => !selected.some((c) => c.id === m.courseId),
-    );
+    const preserve = <T extends { courseId: string }>(arr: T[] | undefined) =>
+      (arr ?? []).filter((m) => !selected.some((c) => c.id === m.courseId));
 
     data = {
       ...data,
@@ -552,16 +422,53 @@ export async function runSync(): Promise<void> {
       ],
       sourceRecords: sources,
       announcements,
+      announcementFacts: [...preserve(before.announcementFacts), ...announcementFacts],
       academicDates,
       changes,
-      contentModules: [...preservedMods, ...contentModules],
-      contentItems: [...preservedItems, ...contentItems],
+      contentModules: [...preserve(before.contentModules), ...contentModules],
+      contentItems: [...preserve(before.contentItems), ...contentItems],
+      discussionForums: [...preserve(before.discussionForums), ...discussionForums],
+      discussionTopics: [...preserve(before.discussionTopics), ...discussionTopics],
+      discussionPosts: [...preserve(before.discussionPosts), ...discussionPosts],
+      quizAttempts: [...preserve(before.quizAttempts), ...quizAttempts],
+      feedbackRecords: [...preserve(before.feedbackRecords), ...feedbackRecords],
+      gradeCategories: [...preserve(before.gradeCategories), ...gradeCategories],
+      gradeRecords: [...preserve(before.gradeRecords), ...gradeRecords],
+      libraryResources: [...preserve(before.libraryResources), ...libraryResources],
+      externalActivities: [...preserve(before.externalActivities), ...externalActivities],
+      entityLinks: [
+        ...(before.entityLinks ?? []).filter((l) => {
+          const courseIds = new Set(selected.map((c) => c.id));
+          const fromCourse =
+            reconciled.assessments.find((a) => a.id === l.fromId)?.courseId ??
+            contentItems.find((c) => c.id === l.fromId)?.courseId ??
+            announcements.find((a) => a.id === l.fromId)?.courseId;
+          return !fromCourse || !courseIds.has(fromCourse);
+        }),
+        ...entityLinks,
+      ],
+      extractedFacts: [
+        ...(before.extractedFacts ?? []).filter(
+          (f) => !f.courseId || !selected.some((c) => c.id === f.courseId),
+        ),
+        ...extractedFacts,
+      ],
+      sourceArtifacts: [
+        ...(before.sourceArtifacts ?? []).filter(
+          (s) => !s.courseId || !selected.some((c) => c.id === s.courseId),
+        ),
+      ],
+      sourceCoverage: [
+        ...(before.sourceCoverage ?? []).filter((s) => !selected.some((c) => c.id === s.courseId)),
+        ...sourceCoverage,
+      ],
+      apiExplorationLog: [...apiExplorationLog].slice(-500),
       sync: failedCodes.length
         ? {
             status: "error",
             lastSyncedAt: before.sync.lastSyncedAt,
             startedAt: null,
-            message: `couldn't load ${failedCodes.join(", ")}${outlineMsg ? ` Â· ${outlineMsg}` : ""}`,
+            message: `couldn't load ${failedCodes.join(", ")}${outlineMsg ? ` · ${outlineMsg}` : ""}`,
           }
         : {
             status: "idle",
@@ -570,6 +477,8 @@ export async function runSync(): Promise<void> {
             message: outlineMsg,
           },
     };
+
+    data = { ...data, searchIndex: rebuildSearchIndex(data) };
 
     await saveAppData(data);
   } catch (e) {

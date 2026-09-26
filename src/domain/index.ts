@@ -12,3 +12,6 @@ export * from "./meetings";
 export * from "./facts";
 
 export * from "./content";
+
+export * from "./discussions";
+export * from "./coverage";

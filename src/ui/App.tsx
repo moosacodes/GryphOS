@@ -1,4 +1,4 @@
-import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+﻿import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useAppData } from "./hooks/useStore";
 import { useTheme } from "./hooks/useTheme";
 import { Layout } from "./components/Layout";
@@ -14,6 +14,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { InboxPage } from "./pages/InboxPage";
 import { SearchPage } from "./pages/SearchPage";
 import { SetupPage } from "./pages/SetupPage";
+import { CoveragePage } from "./pages/CoveragePage";
 
 export function App() {
   const { data, ready, update } = useAppData();
@@ -22,7 +23,7 @@ export function App() {
   if (!ready) {
     return (
       <div className="boot-screen" style={{ padding: "2rem", color: "var(--text-muted)" }}>
-        Loading gryphOS…
+        Loading gryphOSâ€¦
       </div>
     );
   }
@@ -44,6 +45,8 @@ export function App() {
           <Route path="grades" element={<GradesPage data={data} update={update} />} />
           <Route path="tasks" element={<TasksPage data={data} />} />
           <Route path="search" element={<SearchPage data={data} />} />
+          <Route path="coverage" element={<CoveragePage data={data} />} />
+          <Route path="coverage/:courseId" element={<CoveragePage data={data} />} />
           <Route path="setup" element={<SetupPage data={data} update={update} />} />
           <Route path="documents" element={<DocumentsPage data={data} update={update} />} />
           <Route path="settings" element={<SettingsPage data={data} update={update} />} />
@@ -54,3 +57,4 @@ export function App() {
     </HashRouter>
   );
 }
+

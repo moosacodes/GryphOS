@@ -120,7 +120,7 @@ export function fixture2430(): CourseFixture {
     },
   ];
   const people: Person[] = [
-    { id: "person:2430:inst", name: "Fei Song", email: null, role: "instructor", courseId: course.id },
+    { id: "person:2430:inst", name: "Fei Song", email: null, role: "instructor", aliases: [], courseId: course.id },
   ];
   const assessments = [
     assessment({ id: "a:2430:lab1", courseId: course.id, title: "Lab 1", type: "lab", weightPercent: 5 }),
@@ -177,7 +177,7 @@ export function fixture2030(): CourseFixture {
     },
   ];
   const people: Person[] = [
-    { id: "person:2030:inst", name: "Gurjit Randhawa", email: null, role: "instructor", courseId: course.id },
+    { id: "person:2030:inst", name: "Gurjit Randhawa", email: null, role: "instructor", aliases: [], courseId: course.id },
   ];
   const quizzes = Array.from({ length: 11 }, (_, i) =>
     assessment({
@@ -291,7 +291,7 @@ export function fixture2520(): CourseFixture {
     },
   ];
   const people: Person[] = [
-    { id: "person:2520:inst", name: "Yan Yan", email: null, role: "instructor", courseId: course.id },
+    { id: "person:2520:inst", name: "Yan Yan", email: null, role: "instructor", aliases: [], courseId: course.id },
   ];
   const labs = [1, 2, 3, 4, 5].map((n) =>
     assessment({ id: `a:2520:lab${n}`, courseId: course.id, title: `Lab ${n}`, type: "lab", weightPercent: 4 }),

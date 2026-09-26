@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router-dom";
+﻿import { Link, useParams } from "react-router-dom";
 import type { AppData, Assessment } from "@/domain/types";
 import { DEFAULT_ITEM_STATE } from "@/domain/types";
 import { deadlineSafetyFromAssessment } from "@/engines/deadlines";
@@ -6,6 +6,7 @@ import { formatInToronto } from "@/domain/dates";
 import { summarizeCourseGrades } from "@/engines/grades";
 import { ensureTypedRule } from "@/domain/rules";
 import { classifyDocument } from "@/domain/content";
+import { assessmentWorkspace } from "@/ingestion/entityLinking";
 
 function personalLabel(a: Assessment): string {
   if (a.state?.missed) return "Missed";
@@ -52,9 +53,18 @@ export function AssessmentDetailPage({
     if (ci.courseId !== assessment.courseId) return false;
     const cls = ci.documentClass || classifyDocument(ci.title);
     const titleHit = ci.title.toLowerCase().includes(assessment.title.toLowerCase().slice(0, 12));
-    return cls === "assignment_spec" || cls === "lab_handout" || titleHit;
+    return cls === "assignment_spec" || cls === "assignment_specification" || cls === "lab_handout" || cls === "lab_instructions" || cls === "grading_rubric" || titleHit;
   });
 
+    const workspace = assessmentWorkspace(assessment.id, data.entityLinks ?? [], {
+    contentItems: data.contentItems ?? [],
+    library: data.libraryResources ?? [],
+    announcements: data.announcements,
+    announcementFacts: data.announcementFacts ?? [],
+    feedback: data.feedbackRecords ?? [],
+    gradeRecords: data.gradeRecords ?? [],
+  });
+  const quizAttempts = (data.quizAttempts ?? []).filter((q) => q.assessmentId === assessment.id);
   const relatedAnns = data.announcements.filter(
     (n) =>
       n.courseId === assessment.courseId &&
@@ -115,12 +125,12 @@ export function AssessmentDetailPage({
       <div className="page-header">
         <div>
           <p className="small">
-            <Link to={course ? `/courses/${course.id}` : "/"}>← {course?.code ?? "Course"}</Link>
+            <Link to={course ? `/courses/${course.id}` : "/"}>â† {course?.code ?? "Course"}</Link>
           </p>
           <h1>{assessment.title}</h1>
           <p>
-            {course?.code} · {assessment.type}
-            {assessment.weightPercent != null ? ` · ${assessment.weightPercent}% of course` : " · weight unknown"}
+            {course?.code} Â· {assessment.type}
+            {assessment.weightPercent != null ? ` Â· ${assessment.weightPercent}% of course` : " Â· weight unknown"}
           </p>
         </div>
         <div className="workspace-actions">
@@ -195,7 +205,7 @@ export function AssessmentDetailPage({
               Points:{" "}
               {assessment.pointsEarned != null && assessment.pointsPossible != null
                 ? `${assessment.pointsEarned} / ${assessment.pointsPossible}`
-                : "—"}
+                : "â€”"}
             </li>
             <li>Dropped: {row?.dropped ? "Yes" : row?.provisionalDrop ? "Provisional" : "No"}</li>
             <li>
@@ -205,17 +215,17 @@ export function AssessmentDetailPage({
             </li>
           </ul>
           <Link to="/grades" className="small">
-            What-if calculator →
+            What-if calculator â†’
           </Link>
         </section>
 
         <section className="card">
           <h2>Attached / related content</h2>
-          {relatedContent.length === 0 ? (
+          {[...workspace.specs, ...relatedContent.filter((c) => !workspace.specs.some((s) => s.id === c.id))].length === 0 ? (
             <p className="muted small">No linked specs yet. Browse the course content tree after sync.</p>
           ) : (
             <ul className="clean-list">
-              {relatedContent.map((ci) => (
+              {[...workspace.specs, ...relatedContent.filter((c) => !workspace.specs.some((s) => s.id === c.id))].map((ci) => (
                 <li key={ci.id}>
                   {ci.url ? (
                     <a href={ci.url} target="_blank" rel="noreferrer">
@@ -229,25 +239,86 @@ export function AssessmentDetailPage({
               ))}
             </ul>
           )}
+          {workspace.library.length > 0 && (
+            <>
+              <h3 className="small">Library text</h3>
+              <ul className="clean-list">
+                {workspace.library.map((lr) => (
+                  <li key={lr.id}>
+                    {lr.filename} <span className="badge">{lr.documentClass}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {workspace.feedback.length > 0 && (
+            <>
+              <h3 className="small">Feedback</h3>
+              <ul className="clean-list">
+                {workspace.feedback.map((fb) => (
+                  <li key={fb.id}>
+                    {fb.score != null ? <strong>{fb.score} · </strong> : null}
+                    {fb.text.slice(0, 240)}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {quizAttempts.length > 0 && (
+            <>
+              <h3 className="small">Quiz attempts</h3>
+              <ul className="clean-list">
+                {quizAttempts.map((qa) => (
+                  <li key={qa.id}>
+                    Attempt {qa.attemptNumber}
+                    {qa.score != null ? ` · score ${qa.score}` : ""}
+                    {qa.completedAt ? ` · ${qa.completedAt}` : " · incomplete"}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {workspace.grades.length > 0 && (
+            <>
+              <h3 className="small">Grade items</h3>
+              <ul className="clean-list">
+                {workspace.grades.map((g) => (
+                  <li key={g.id}>
+                    {g.displayedGrade ?? `${g.pointsEarned ?? "—"} / ${g.pointsPossible ?? "—"}`}
+                    {g.unmatched ? " (unmatched)" : ""}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </section>
 
         <section className="card">
           <h2>Announcements & clarifications</h2>
-          {relatedAnns.length === 0 ? (
+          {[...workspace.announcements, ...relatedAnns.filter((n) => !workspace.announcements.some((w) => w.id === n.id))].length === 0 &&
+          workspace.facts.length === 0 ? (
             <p className="muted small">No matching announcements.</p>
           ) : (
             <ul className="clean-list">
-              {relatedAnns.slice(0, 8).map((n) => (
-                <li key={n.id}>
-                  <strong>{n.title}</strong>
-                  <div className="small muted">{n.bodyText.slice(0, 160)}</div>
-                  {n.url && (
-                    <a className="small" href={n.url} target="_blank" rel="noreferrer">
-                      CourseLink
-                    </a>
-                  )}
+              {workspace.facts.map((f) => (
+                <li key={f.id}>
+                  <strong>{f.kind}</strong>
+                  <div className="small muted">{f.detail}</div>
                 </li>
               ))}
+              {[...workspace.announcements, ...relatedAnns.filter((n) => !workspace.announcements.some((w) => w.id === n.id))]
+                .slice(0, 8)
+                .map((n) => (
+                  <li key={n.id}>
+                    <strong>{n.title}</strong>
+                    <div className="small muted">{n.bodyText.slice(0, 160)}</div>
+                    {n.url && (
+                      <a className="small" href={n.url} target="_blank" rel="noreferrer">
+                        CourseLink
+                      </a>
+                    )}
+                  </li>
+                ))}
             </ul>
           )}
         </section>
@@ -255,12 +326,12 @@ export function AssessmentDetailPage({
         <section className="card">
           <h2>Checklist</h2>
           {checklist.length === 0 ? (
-            <p className="muted small">No personal checklist items linked. Use Quick Capture (Ctrl+K → add task).</p>
+            <p className="muted small">No personal checklist items linked. Use Quick Capture (Ctrl+K â†’ add task).</p>
           ) : (
             <ul className="clean-list">
               {checklist.map((t) => (
                 <li key={t.id}>
-                  {t.done ? "✓" : "○"} {t.title}
+                  {t.done ? "âœ“" : "â—‹"} {t.title}
                 </li>
               ))}
             </ul>
@@ -310,3 +381,4 @@ export function AssessmentDetailPage({
     </div>
   );
 }
+

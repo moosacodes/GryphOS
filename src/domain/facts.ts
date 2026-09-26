@@ -1,4 +1,4 @@
-/** SourceArtifact + ExtractedFact + entity linking + temporal validity. */
+﻿/** SourceArtifact + ExtractedFact + entity linking + temporal validity. */
 import type { AuthorityClass } from "./authority";
 import type { SourceType } from "./types";
 
@@ -11,11 +11,20 @@ export type FactType =
   | "grade"
   | "announcement_deadline_change"
   | "announcement_clarification"
+  | "announcement_extension"
+  | "announcement_cancel"
+  | "announcement_location"
+  | "announcement_exam"
+  | "announcement_grade_release"
+  | "announcement_resource"
+  | "staff_clarification"
   | "rule"
   | "location"
   | "instructor"
   | "content_module"
   | "document_class"
+  | "feedback"
+  | "submission"
   | "other";
 
 export interface SourceArtifact {
@@ -49,21 +58,35 @@ export interface ExtractedFact {
   supersededBy: string | null;
   retrievedAt: string;
   snippet: string | null;
+  /** Structured academic change metadata */
+  property?: string | null;
+  previousValue?: unknown;
+  newValue?: unknown;
+  authorRole?: string | null;
 }
 
 export type EntityLinkKind =
   | "SAME_AS"
   | "ABOUT"
   | "ASSOCIATED_WITH"
+  | "HAS_SPEC"
   | "SUBMITS_TO"
-  | "GRADES"
-  | "EXTENDS_DEADLINE_OF"
+  | "GRADED_BY"
+  | "CHANGES_DEADLINE_OF"
   | "CLARIFIES"
+  | "CONTAINS"
+  | "OCCURS_DURING"
+  | "USES_EXTERNAL_TOOL"
+  | "EXTENDS_DEADLINE_OF"
   | "BELONGS_TO_MODULE"
   | "INTRODUCED_DURING"
   | "SCHEDULED_AS"
   | "LINKS_TO_EXTERNAL_ACTIVITY"
-  | "DERIVED_FROM";
+  | "DERIVED_FROM"
+  | "HAS_FEEDBACK"
+  | "HAS_SUBMISSION"
+  | "HAS_RUBRIC"
+  | "HAS_STARTER";
 
 export interface EntityLink {
   id: string;
@@ -109,4 +132,22 @@ export function syncContentHash(text: string): string {
     h = Math.imul(h, 16777619);
   }
   return `fnv_${(h >>> 0).toString(16)}_${text.length}`;
+}
+
+/** Tiny line-oriented diff for change events (practical, not a full Myers pack). */
+export function simpleTextDiff(prev: string, next: string, maxLines = 12): string {
+  const a = prev.split(/\r?\n/);
+  const b = next.split(/\r?\n/);
+  const out: string[] = [];
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n && out.length < maxLines; i++) {
+    if (a[i] === b[i]) continue;
+    if (a[i] != null && b[i] == null) out.push(`- ${a[i].slice(0, 120)}`);
+    else if (a[i] == null && b[i] != null) out.push(`+ ${b[i].slice(0, 120)}`);
+    else {
+      out.push(`- ${(a[i] ?? "").slice(0, 120)}`);
+      out.push(`+ ${(b[i] ?? "").slice(0, 120)}`);
+    }
+  }
+  return out.join("\n");
 }

@@ -1,4 +1,4 @@
-import { NavLink, Outlet, Link } from "react-router-dom";
+﻿import { NavLink, Outlet, Link } from "react-router-dom";
 import type { AppData } from "@/domain/types";
 import { openCourseLink } from "@/shared/actions";
 import { effectiveStatus } from "@/storage/chromeStore";
@@ -14,13 +14,14 @@ const LINKS = [
   { to: "/grades", label: "Grades" },
   { to: "/courses", label: "Courses" },
   { to: "/search", label: "Search" },
+  { to: "/coverage", label: "Coverage" },
   { to: "/settings", label: "Settings" },
 ];
 
 function syncLabel(status: ReturnType<typeof effectiveStatus>, lastSyncedAt: number | null): string {
   switch (status) {
     case "syncing":
-      return "Syncing…";
+      return "Syncingâ€¦";
     case "signed_out":
       return "Signed out";
     case "error":
@@ -146,3 +147,4 @@ export function Layout({
     </div>
   );
 }
+

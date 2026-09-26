@@ -11,6 +11,73 @@ function ensureState(s?: Partial<AcademicItemState> | null): AcademicItemState {
 }
 
 const migrations: Record<number, Migration> = {
+  4: (data) => ({
+    ...data,
+    discussionForums: data.discussionForums ?? [],
+    discussionTopics: data.discussionTopics ?? [],
+    discussionPosts: data.discussionPosts ?? [],
+    announcementFacts: data.announcementFacts ?? [],
+    quizAttempts: data.quizAttempts ?? [],
+    feedbackRecords: data.feedbackRecords ?? [],
+    libraryResources: data.libraryResources ?? [],
+    sourceCoverage: data.sourceCoverage ?? [],
+    apiExplorationLog: data.apiExplorationLog ?? [],
+    searchIndex: data.searchIndex ?? [],
+    people: (data.people ?? []).map((p) => ({
+      ...p,
+      aliases: p.aliases ?? [],
+      role: p.role === "other" || p.role === "instructor" || p.role === "ta" || p.role === "staff" ? p.role : "other",
+    })),
+    gradeCategories: (data.gradeCategories ?? []).map((g) => ({
+      ...g,
+      brightspaceCategoryId: g.brightspaceCategoryId ?? null,
+    })),
+    gradeRecords: (data.gradeRecords ?? []).map((g) => ({
+      ...g,
+      gradeObjectId: g.gradeObjectId ?? null,
+      categoryId: g.categoryId ?? null,
+      feedbackText: g.feedbackText ?? null,
+      maxPoints: g.maxPoints ?? null,
+      weightPercent: g.weightPercent ?? null,
+      unmatched: g.unmatched ?? false,
+    })),
+    externalActivities: (data.externalActivities ?? []).map((e) => ({
+      ...e,
+      activityKey: e.activityKey ?? null,
+      parentGroupId: e.parentGroupId ?? null,
+      bestNOf: e.bestNOf ?? null,
+      groupSize: e.groupSize ?? null,
+      assessmentId: e.assessmentId ?? null,
+    })),
+    contentItems: (data.contentItems ?? []).map((ci) => ({
+      ...ci,
+      topicId: ci.topicId ?? null,
+      mimeType: ci.mimeType ?? null,
+      topicType: ci.topicType ?? null,
+      descriptionText: ci.descriptionText ?? null,
+      bodyText: ci.bodyText ?? null,
+      startDate: ci.startDate ?? null,
+      endDate: ci.endDate ?? null,
+      dueDate: ci.dueDate ?? null,
+      completionRequired: ci.completionRequired ?? null,
+      completionCompleted: ci.completionCompleted ?? null,
+      isHidden: ci.isHidden ?? false,
+      isExternal: ci.isExternal ?? false,
+      externalUrl: ci.externalUrl ?? null,
+      linkedActivityId: ci.linkedActivityId ?? null,
+      sortOrder: ci.sortOrder ?? 0,
+      libraryResourceId: ci.libraryResourceId ?? null,
+      previousContentHash: ci.previousContentHash ?? null,
+    })),
+    contentModules: (data.contentModules ?? []).map((cm) => ({
+      ...cm,
+      descriptionText: cm.descriptionText ?? null,
+      startDate: cm.startDate ?? null,
+      endDate: cm.endDate ?? null,
+      isHidden: cm.isHidden ?? false,
+      rawModuleId: cm.rawModuleId ?? null,
+    })),
+  }),
   3: (data) => ({
     ...data,
     sourceArtifacts: data.sourceArtifacts ?? [],
@@ -146,6 +213,16 @@ export function migrate(raw: unknown): AppData {
   }));
   data.contentItems = data.contentItems ?? [];
   data.calculationStates = data.calculationStates ?? [];
+  data.discussionForums = data.discussionForums ?? [];
+  data.discussionTopics = data.discussionTopics ?? [];
+  data.discussionPosts = data.discussionPosts ?? [];
+  data.announcementFacts = data.announcementFacts ?? [];
+  data.quizAttempts = data.quizAttempts ?? [];
+  data.feedbackRecords = data.feedbackRecords ?? [];
+  data.libraryResources = data.libraryResources ?? [];
+  data.sourceCoverage = data.sourceCoverage ?? [];
+  data.apiExplorationLog = data.apiExplorationLog ?? [];
+  data.searchIndex = data.searchIndex ?? [];
   data.academicRules = (data.academicRules ?? []).map((r) => ensureTypedRule(r as never));
   data.announcements = (data.announcements ?? []).map((n) => ({
     ...n,

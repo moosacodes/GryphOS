@@ -4,7 +4,9 @@ export { ensureTypedRule, migrateLegacyRule } from "./rules";
 export type { RecurringMeetingPattern, MeetingOccurrence, HolidayWindow } from "./meetings";
 export type { SourceArtifact, ExtractedFact, EntityLink, CalculationState, FactType } from "./facts";
 export type { AuthorityClass, DeadlineSafety } from "./authority";
-export type { CourseContentModule, CourseContentItem, DocumentClass } from "./content";
+export type { CourseContentModule, CourseContentItem, DocumentClass, LibraryResource } from "./content";
+export type { DiscussionForum, DiscussionTopicLocal, DiscussionPost, AuthorRole } from "./discussions";
+export type { CourseSourceCoverage, SourceCapability, SourceCapabilityStatus } from "./coverage";
 
 export type SourceType =
   | "courselink_course"
@@ -22,7 +24,10 @@ export type SourceType =
   | "user_task"
   | "rule_engine"
   | "external_activity"
-  | "courselink_discussion";
+  | "courselink_discussion"
+  | "courselink_checklist"
+  | "courselink_feedback"
+  | "library_resource";
 
 export type AssessmentType =
   | "assignment"
@@ -132,7 +137,8 @@ export interface Person {
   id: string;
   name: string;
   email: string | null;
-  role: "instructor" | "ta" | "other";
+  role: "instructor" | "ta" | "staff" | "other";
+  aliases: string[];
   courseId: string | null;
 }
 
@@ -158,6 +164,7 @@ export interface GradeCategory {
   /** Cap course grade unless this category meets threshold (e.g. exam) */
   gradeCapPercent: number | null;
   thresholdPercent: number | null;
+  brightspaceCategoryId: number | null;
 }
 
 export interface GradeRecord {
@@ -169,6 +176,12 @@ export interface GradeRecord {
   displayedGrade: string | null;
   official: boolean;
   retrievedAt: string;
+  gradeObjectId: string | null;
+  categoryId: string | null;
+  feedbackText: string | null;
+  maxPoints: number | null;
+  weightPercent: number | null;
+  unmatched: boolean;
 }
 
 export interface Assessment {
@@ -211,6 +224,69 @@ export interface Announcement {
   /** Extracted structured facts (not just a boolean) */
   extractedFactIds: string[];
   bodyHash: string | null;
+}
+
+
+export type AnnouncementFactKind =
+  | "deadline_change"
+  | "extension"
+  | "cancel"
+  | "location"
+  | "exam"
+  | "grade_release"
+  | "schedule"
+  | "resource"
+  | "clarification"
+  | "other";
+
+export interface AnnouncementFact {
+  id: string;
+  announcementId: string;
+  courseId: string;
+  kind: AnnouncementFactKind;
+  assessmentHint: string | null;
+  assessmentId: string | null;
+  dueIso: string | null;
+  dueLabel: string | null;
+  location: string | null;
+  detail: string;
+  confidence: number;
+  snippet: string | null;
+}
+
+export interface QuizAttemptRecord {
+  id: string;
+  courseId: string;
+  assessmentId: string | null;
+  quizId: number;
+  attemptId: number;
+  attemptNumber: number;
+  score: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  isPublished: boolean;
+}
+
+export interface FeedbackRecord {
+  id: string;
+  courseId: string;
+  assessmentId: string | null;
+  folderId: number | null;
+  text: string;
+  score: number | null;
+  retrievedAt: string;
+  source: "dropbox" | "grade" | "other";
+}
+
+export interface ApiExplorationEntry {
+  id: string;
+  courseId: string | null;
+  endpoint: string;
+  method: "GET";
+  status: number | "network_error" | "skipped";
+  usable: boolean;
+  note: string;
+  at: string;
 }
 
 export type ResourcePurpose =
@@ -468,6 +544,12 @@ export interface ExternalActivity {
   tool: string;
   url: string | null;
   notes: string | null;
+  /** e.g. Zybook Q1..Q6 as separate entities */
+  activityKey: string | null;
+  parentGroupId: string | null;
+  bestNOf: number | null;
+  groupSize: number | null;
+  assessmentId: string | null;
 }
 
 export interface WhatIfOverride {
@@ -476,6 +558,17 @@ export interface WhatIfOverride {
   pointsPossible: number | null;
   missed?: boolean;
   dropped?: boolean;
+}
+
+
+export interface SearchIndexEntry {
+  id: string;
+  courseId: string | null;
+  kind: string;
+  title: string;
+  body: string;
+  entityId: string | null;
+  updatedAt: string;
 }
 
 export interface AppData {
@@ -510,6 +603,16 @@ export interface AppData {
   actionLog: ActionLogEntry[];
   externalActivities: ExternalActivity[];
   whatIfOverrides: WhatIfOverride[];
+  discussionForums: import("./discussions").DiscussionForum[];
+  discussionTopics: import("./discussions").DiscussionTopicLocal[];
+  discussionPosts: import("./discussions").DiscussionPost[];
+  announcementFacts: AnnouncementFact[];
+  quizAttempts: QuizAttemptRecord[];
+  feedbackRecords: FeedbackRecord[];
+  libraryResources: import("./content").LibraryResource[];
+  sourceCoverage: import("./coverage").CourseSourceCoverage[];
+  apiExplorationLog: ApiExplorationEntry[];
+  searchIndex: SearchIndexEntry[];
   sync: SyncState;
   preferences: Preferences;
   pendingSync: boolean;

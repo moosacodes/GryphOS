@@ -19,6 +19,9 @@ const DUE_PRIORITY: Record<SourceType, number> = {
   rule_engine: 50,
   external_activity: 40,
   courselink_discussion: 45,
+  courselink_checklist: 50,
+  courselink_feedback: 70,
+  library_resource: 45,
 };
 
 const WEIGHT_PRIORITY: Record<SourceType, number> = {
@@ -38,6 +41,9 @@ const WEIGHT_PRIORITY: Record<SourceType, number> = {
   rule_engine: 50,
   external_activity: 40,
   courselink_discussion: 45,
+  courselink_checklist: 50,
+  courselink_feedback: 70,
+  library_resource: 45,
 };
 
 function dueKey(d: AcademicDateValue): string {
