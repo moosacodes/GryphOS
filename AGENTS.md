@@ -2,6 +2,12 @@
 
 Guide for coding agents working in this repository.
 
+## Supported browsers
+
+Primary targets: **Brave** and **Opera GX** (Chromium MV3). Chrome also works.
+Use the standard `chrome.*` APIs — both browsers expose them. Do not add a
+`browser` polyfill unless Firefox support is explicitly required.
+
 ## Production vs development
 
 - **Users run the Chrome extension from `dist/`.** After `npm run build` and

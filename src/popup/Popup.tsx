@@ -61,7 +61,7 @@ export function Popup() {
         <div className="card" style={{ marginBottom: 8, padding: "0.65rem", background: "var(--bg-muted)" }}>
           <div className="small" style={{ fontWeight: 600 }}>Runs entirely in Chrome</div>
           <div className="small muted">
-            No terminal or local server needed. Sign in to CourseLink, then Sync.
+            No terminal or local server needed. Works in Brave and Opera GX. Sign in to CourseLink, then Sync.
           </div>
         </div>
       )}

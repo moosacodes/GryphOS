@@ -1,37 +1,40 @@
 import { COURSELINK_ORIGIN } from "@/domain/constants";
 import { loadAppData, saveAppData } from "@/storage/repository";
+import { getChrome } from "./extensionApi";
 
 export async function openCourseLink(active = true): Promise<void> {
+  const api = getChrome();
   const data = await loadAppData();
   await saveAppData({ ...data, pendingSync: true });
-  await chrome.tabs.create({ url: `${COURSELINK_ORIGIN}/d2l/home`, active });
+  await api.tabs.create({ url: `${COURSELINK_ORIGIN}/d2l/home`, active });
 }
 
 export async function requestSync(): Promise<void> {
-  const tabs = await chrome.tabs.query({ url: `${COURSELINK_ORIGIN}/*` });
+  const api = getChrome();
+  const tabs = await api.tabs.query({ url: `${COURSELINK_ORIGIN}/*` });
   const tab = tabs.find((t) => t.id !== undefined);
   if (!tab?.id) {
     await openCourseLink(false);
     return;
   }
   try {
-    await chrome.tabs.sendMessage(tab.id, { type: "GRYPHOS_SYNC" });
+    await api.tabs.sendMessage(tab.id, { type: "GRYPHOS_SYNC" });
   } catch {
     const data = await loadAppData();
     await saveAppData({ ...data, pendingSync: true });
-    await chrome.tabs.reload(tab.id);
+    await api.tabs.reload(tab.id);
   }
 }
 
-/** Open the full app from the packed extension (chrome-extension://…/app.html). */
+/** Open the full app from the packed extension (extension://…/app.html). */
 export async function openApp(): Promise<void> {
-  const url = chrome.runtime.getURL("app.html");
+  const api = getChrome();
+  const url = api.runtime.getURL("app.html");
   try {
-    await chrome.tabs.create({ url });
+    await api.tabs.create({ url });
   } catch {
-    // Popup context can flake; background owns a reliable open path.
     try {
-      await chrome.runtime.sendMessage({ type: "GRYPHOS_OPEN_APP" });
+      await api.runtime.sendMessage({ type: "GRYPHOS_OPEN_APP" });
     } catch {
       window.open(url, "_blank");
     }

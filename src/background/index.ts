@@ -1,4 +1,4 @@
-/** MV3 service worker — message relay and open-app helpers. */
+/** MV3 service worker — message relay and open-app helpers (Chromium: Brave / Opera GX / Chrome). */
 import { COURSELINK_ORIGIN } from "@/domain/constants";
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -12,7 +12,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return false;
   }
   if (msg?.type === "GRYPHOS_OPEN_COURSELINK") {
-    void chrome.tabs.create({ url: `${COURSELINK_ORIGIN}/d2l/home`, active: msg.active !== false });
+    void chrome.tabs.create({
+      url: `${COURSELINK_ORIGIN}/d2l/home`,
+      active: msg.active !== false,
+    });
     sendResponse({ ok: true });
     return false;
   }

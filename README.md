@@ -8,9 +8,12 @@ from your existing CourseLink browser session, reconciles it with imported
 course outlines, and presents a unified semester dashboard — without a chatbot,
 backend, or telemetry.
 
+**Target browsers:** [Brave](https://brave.com/) and [Opera GX](https://www.opera.com/gx)
+(Chromium-based). Google Chrome also works the same way if you prefer it.
+
 **Everyday use does not need a terminal.** After you build once and load the
-extension from `dist/`, gryphOS runs entirely inside Chrome. Close the terminal;
-leave it closed.
+extension from `dist/`, gryphOS runs entirely inside the browser. Close the
+terminal; leave it closed.
 
 ## Features
 
@@ -27,31 +30,56 @@ leave it closed.
 
 See [PRIVACY.md](./PRIVACY.md). All academic data stays on your device.
 
-## Install (Chrome) — normal use
+## Install — normal use (Brave / Opera GX)
 
-Build once, then use the extension forever with no terminal and no local server:
+Build once, then use the extension forever with no terminal and no local server.
 
-1. One-time setup (terminal only for this step):
-   ```bash
-   npm install
-   npm run build
-   ```
-2. Open `chrome://extensions`
-3. Enable **Developer mode**
-4. **Load unpacked** → select the `dist/` folder in this repo
-5. Pin gryphOS if you like. You can close the terminal now.
-6. Sign in to [CourseLink](https://courselink.uoguelph.ca), open any CourseLink page, then click **Sync** in the extension popup (or in the full app)
+### 1. Build (one-time / when updating)
 
-The `dist/` folder is a complete Manifest V3 extension (HTML, JS, CSS, icons).
-Chrome loads those files directly. There is no Vite/dev server and nothing to
-keep running in the background.
+```bash
+npm install
+npm run build
+```
 
-Reload the extension in `chrome://extensions` only after you run `npm run build`
-again (for updates). Day-to-day syncing and browsing never need npm.
+### 2. Load unpacked in your browser
+
+**Brave**
+
+1. Open `brave://extensions`
+2. Enable **Developer mode** (top-right)
+3. **Load unpacked** → select this repo's `dist/` folder
+4. Pin gryphOS from the extensions puzzle menu if you like
+
+**Opera GX**
+
+1. Open `opera://extensions`
+2. Enable **Developer mode**
+3. If Opera asks you to allow Chromium/Chrome extensions, turn that on
+   (Opera GX → Settings → Advanced → **Privacy & security** / extensions settings,
+   or the prompt on the extensions page — wording varies by version)
+4. **Load unpacked** → select this repo's `dist/` folder
+5. Pin gryphOS from the extensions sidebar if you like
+
+**Chrome (optional)**
+
+Same steps at `chrome://extensions` → Developer mode → Load unpacked → `dist/`.
+
+### 3. Sync with CourseLink
+
+1. Sign in to [CourseLink](https://courselink.uoguelph.ca) **in the same browser**
+2. Open any CourseLink page (`/d2l/...`)
+3. Click **Sync** in the gryphOS popup (or in the full app)
+
+You can close the terminal after step 1. The `dist/` folder is a complete
+Manifest V3 extension. Brave/Opera/Chrome load those files directly — no Vite
+server and nothing to keep running.
+
+Reload the extension on the extensions page only after you run `npm run build`
+again (for code updates). Day-to-day syncing never needs npm.
 
 ## Development (optional)
 
-Only for people changing the code. Regular students/users should ignore this.
+Only for people changing the code. Regular users should ignore this.
 
 ```bash
 npm install
@@ -59,11 +87,10 @@ npm run typecheck
 npm run lint
 npm test
 npm run build        # refresh dist/ for Load unpacked
-npm run dev          # optional Vite preview of the UI only — NOT how you run the extension
+npm run dev          # optional Vite UI preview — NOT how you run the extension
 ```
 
-`npm run dev` is a developer convenience for UI work. It does **not** replace
-loading `dist/` in Chrome, and the real extension does not talk to that server.
+`npm run dev` does **not** replace loading `dist/` in Brave/Opera/Chrome.
 
 ## Architecture
 
@@ -81,11 +108,14 @@ See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
 ## Limitations
 
-- Live CourseLink behaviour requires a real signed-in UofG session
+- Live CourseLink behaviour requires a real signed-in UofG session **in the same browser** that has gryphOS installed
 - Some Brightspace tools return 403/404 per course; sync continues for other tools
 - Final exam dates are often absent from CourseLink — shown as unknown unless
   provided by an outline or calendar event
 - PDF outlines that are scanned images may not yield extractable text
+- Opera GX must allow installing Chromium/unpacked extensions (Developer mode);
+  if Load unpacked is missing, enable Chromium extension support in Opera settings
+- Not built or tested for Firefox or Safari (different extension APIs)
 
 ## License
 

@@ -2,8 +2,9 @@
 
 _Last updated: September 26, 2026_
 
-gryphOS is a Chrome extension that organizes University of Guelph CourseLink
-academic information locally on your device.
+gryphOS is a Chromium browser extension (Brave, Opera GX, and Chrome) that
+organizes University of Guelph CourseLink academic information locally on your
+device.
 
 **Short version:** everything stays in your browser. gryphOS has no servers,
 no accounts, no analytics, and no ads. Your data is never sent to the developer
@@ -26,9 +27,9 @@ account, and does not access unrelated browsing history.
 
 ## Storage
 
-Large structured academic data is stored in IndexedDB in your browser.
-Preferences and sync status also use `chrome.storage.local` on your device.
-Nothing is synced to a gryphOS backend (there is none).
+Academic data and preferences are stored with the browser's extension local
+storage (`chrome.storage.local`) on your device. Nothing is synced to a
+gryphOS backend (there is none).
 
 ## Network
 
@@ -38,14 +39,14 @@ those adapters are used). Imported documents are parsed locally.
 
 ## Permissions
 
-- `storage` — local preferences and sync metadata
+- `storage` — local preferences and academic data on your device
 - `tabs` — find/open a CourseLink tab to sync; open the full app
 - Host access to `courselink.uoguelph.ca` — read academic data while signed in
 
 ## Deleting data
 
-Remove the extension in `chrome://extensions`, or use **Reset local data** in
-Settings. There is nothing hosted elsewhere to delete.
+Remove the extension from your browser's extensions page, or use **Reset local
+data** in Settings. There is nothing hosted elsewhere to delete.
 
 ## Affiliation
 

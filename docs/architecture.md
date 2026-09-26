@@ -7,7 +7,7 @@ Pipeline:
 ## How the extension runs
 
 `npm run build` produces a **self-contained** Manifest V3 package in `dist/`.
-Chrome loads those static files via **Load unpacked**. No Vite server, no
+Brave, Opera GX, or Chrome loads those static files via **Load unpacked**. No Vite server, no
 localhost, and no terminal need to stay open for normal use.
 
 ## Extension surfaces

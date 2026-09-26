@@ -2,8 +2,11 @@
   "manifest_version": 3,
   "name": "gryphOS",
   "version": "1.0.0",
-  "description": "Privacy-first local-first academic OS for University of Guelph CourseLink.",
-  "permissions": ["storage", "tabs"],
+  "description": "Privacy-first local-first academic OS for University of Guelph CourseLink. Works on Chromium browsers (Brave, Opera GX, Chrome).",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
   "host_permissions": [
     "https://courselink.uoguelph.ca/*"
   ],
@@ -21,8 +24,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://courselink.uoguelph.ca/d2l/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://courselink.uoguelph.ca/d2l/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],

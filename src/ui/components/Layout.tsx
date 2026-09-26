@@ -62,7 +62,7 @@ export function Layout({ data }: { data: AppData }) {
           )}
           <SyncButton />
           <p className="small muted" style={{ margin: 0 }}>
-            Runs in Chrome only — no terminal needed.
+            Runs in your browser (Brave / Opera GX) — no terminal needed.
           </p>
         </div>
       </nav>
