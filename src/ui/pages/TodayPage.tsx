@@ -107,6 +107,15 @@ export function TodayPage({
   const selected = (data.preferences.selectedCourseIds ?? []).length;
   const clock = formatInTimeZone(new Date(), UOFG_TIMEZONE, "EEE · MMM d · h:mm a");
 
+  // Stale/incomplete blueprint model → request CourseLink re-check before trusting plan
+  useEffect(() => {
+    if (!brief.requestRecheck || data.pendingSync) return;
+    // Throttle: at most one automatic re-check per 10 min of sync freshness
+    if (data.sync.lastSyncedAt && Date.now() - data.sync.lastSyncedAt < 10 * 60_000) return;
+    void update((prev) => (prev.pendingSync ? prev : { ...prev, pendingSync: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brief.requestRecheck]);
+
   const onCta = async (cta: MyDayCta) => {
     if (cta.kind === "confirm_complete") {
       await update((prev) => applyMyDayConfirm(prev, cta.assessmentId, "complete"));
@@ -243,13 +252,59 @@ export function TodayPage({
                 <div className="beat-kicker">{b.kicker}</div>
                 <div className="beat-line">{b.line}</div>
                 {b.detail ? <div className="beat-detail">{b.detail}</div> : null}
+                {b.ignoreImpact?.summary ? (
+                  <div className="beat-ignore">If ignored: {b.ignoreImpact.summary}</div>
+                ) : null}
               </button>
             ))}
           </div>
         </section>
       )}
 
-      
+
+      {(brief.staleGaps.length > 0 || brief.replanNote) && (
+        <section aria-label="Model warnings" className="brief-plan-strip">
+          {brief.staleSummary ? (
+            <div className="standing-chip stale-chip" title={brief.staleSummary}>
+              <strong>Stale model</strong> {brief.staleSummary}
+            </div>
+          ) : null}
+          {brief.staleGaps.slice(0, 3).map((g) => (
+            <div key={g.id} className="standing-chip stale-chip" title={g.detail}>
+              <strong>{g.severity === "block" ? "Re-check" : "Gap"}</strong> {g.courseCode}: {g.detail}
+            </div>
+          ))}
+          {brief.replanNote ? (
+            <div className="standing-chip" title={brief.replanNote}>
+              <strong>Re-plan</strong> {brief.replanNote}
+            </div>
+          ) : null}
+          {brief.requestRecheck ? (
+            <div className="standing-chip stale-chip">
+              <strong>Sync queued</strong> CourseLink/docs re-check requested before hard commitments.
+              <span style={{ marginLeft: "0.4rem" }}>
+                <SyncButton />
+              </span>
+            </div>
+          ) : null}
+        </section>
+      )}
+
+      {(brief.recoveryPlan.items.length > 0 || brief.recoveryPlan.mode === "recovery") && (
+        <section aria-label="Recovery plan" className="brief-plan-strip">
+          <div className="standing-chip" title={brief.recoveryPlan.summary}>
+            <strong>{brief.recoveryPlan.mode === "recovery" ? "Recovery plan" : "Plan"}</strong>{" "}
+            {brief.recoveryPlan.summary}
+          </div>
+          {brief.recoveryPlan.items.slice(0, 3).map((it) => (
+            <div key={it.assessmentId} className="standing-chip" title={`${it.why} · If ignored: ${it.ignoreImpact}`}>
+              <strong>{it.courseCode}</strong> {it.title} — {it.why}
+              <div className="beat-ignore">If ignored: {it.ignoreImpact}</div>
+            </div>
+          ))}
+        </section>
+      )}
+
       {(brief.risks.length > 0 || brief.recovery.length > 0) && (
         <section aria-label="Risk and recovery" className="brief-plan-strip">
           {brief.risks.slice(0, 3).map((r) => (

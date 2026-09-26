@@ -8,13 +8,19 @@ import { UOFG_TIMEZONE } from "@/domain/constants";
 import { buildMyDay, type MyDayItem, type MyDayModel, type MyDaySection } from "./myday";
 import { effectiveStatus } from "@/storage/chromeStore";
 import {
+  buildPlanningAutonomy,
   buildRecoveryInsights,
   buildRiskInsights,
   explainAssessment,
+  explainIgnoreImpact,
   formatWhy,
   isAssessmentOpen,
   scoreAssessmentPriority,
+  type IgnoreImpact,
   type KnowledgeInsight,
+  type PlanningAutonomy,
+  type RecoveryPlan,
+  type StaleModelGap,
   type WhyReason,
 } from "./planningKnowledge";
 
@@ -31,6 +37,8 @@ export interface BriefBeat {
   /** Explainable WHY citations from blueprint / rules / sync state */
   reasons?: WhyReason[];
   assessmentId?: string | null;
+  /** What changes if this beat is ignored */
+  ignoreImpact?: IgnoreImpact | null;
 }
 
 export interface CinematicBrief {
@@ -52,6 +60,14 @@ export interface CinematicBrief {
   };
   model: MyDayModel;
   systemNote: string | null;
+  /** Stale / incomplete CourseBlueprint vs live sync gaps */
+  staleGaps: StaleModelGap[];
+  staleSummary: string | null;
+  /** Autonomous recovery rebuild slate */
+  recoveryPlan: RecoveryPlan;
+  replanNote: string | null;
+  requestRecheck: boolean;
+  autonomy: PlanningAutonomy;
 }
 
 function dayPart(now: Date): "morning" | "afternoon" | "evening" | "night" {
@@ -103,7 +119,7 @@ function assessmentFromItem(data: AppData, item: MyDayItem): Assessment | null {
 function enrichBeat(
   data: AppData,
   item: MyDayItem,
-  base: Omit<BriefBeat, "detail" | "reasons" | "priority" | "assessmentId"> & {
+  base: Omit<BriefBeat, "detail" | "reasons" | "priority" | "assessmentId" | "ignoreImpact"> & {
     priority: number;
   },
   now: Date,
@@ -115,11 +131,13 @@ function enrichBeat(
       detail: item.subtitle || item.statusLabel,
       reasons: [],
       assessmentId: null,
+      ignoreImpact: null,
     };
   }
   const reasons = explainAssessment(data, a, now);
   const knowledgeScore = scoreAssessmentPriority(data, a, now);
   const why = formatWhy(reasons, 4);
+  const impact = explainIgnoreImpact(data, a, now);
   return {
     ...base,
     priority: base.priority + knowledgeScore,
@@ -127,6 +145,7 @@ function enrichBeat(
     reasons,
     assessmentId: a.id,
     item,
+    ignoreImpact: impact,
   };
 }
 
@@ -173,6 +192,7 @@ function knowledgeAssessmentBeats(data: AppData, now: Date): BriefBeat[] {
       kicker = "NEXT";
     }
 
+    const impact = explainIgnoreImpact(data, a, now);
     beats.push({
       id: `kb:${a.id}`,
       section,
@@ -182,6 +202,7 @@ function knowledgeAssessmentBeats(data: AppData, now: Date): BriefBeat[] {
       priority: 50 + score,
       reasons,
       assessmentId: a.id,
+      ignoreImpact: impact,
       item: {
         id: `a:${a.id}:kb`,
         section: section === "risk" ? "needs_answer" : (section as MyDaySection),
@@ -231,6 +252,8 @@ export function buildCinematicBrief(data: AppData, now = new Date()): CinematicB
 
   const risks = buildRiskInsights(data, now);
   const recovery = buildRecoveryInsights(data, now);
+  const autonomy = buildPlanningAutonomy(data, now);
+  const recoveryPlan = autonomy.recovery;
 
   const beats: BriefBeat[] = [];
 
@@ -350,6 +373,7 @@ export function buildCinematicBrief(data: AppData, now = new Date()): CinematicB
         hit.priority = kb.priority;
         hit.detail = kb.detail;
         hit.reasons = kb.reasons;
+        hit.ignoreImpact = kb.ignoreImpact;
         if (kb.kicker.includes("MISSED") || kb.kicker === "OVERDUE") hit.kicker = kb.kicker;
       }
       continue;
@@ -360,6 +384,7 @@ export function buildCinematicBrief(data: AppData, now = new Date()): CinematicB
 
   for (const r of risks.slice(0, 3)) {
     if (r.assessmentId && seenAssess.has(r.assessmentId)) continue;
+    const riskA = r.assessmentId ? data.assessments.find((x) => x.id === r.assessmentId) : null;
     beats.push({
       id: r.id,
       section: "risk",
@@ -369,6 +394,7 @@ export function buildCinematicBrief(data: AppData, now = new Date()): CinematicB
       priority: 60 + r.score / 10,
       reasons: r.reasons,
       assessmentId: r.assessmentId,
+      ignoreImpact: riskA ? explainIgnoreImpact(data, riskA, now) : null,
     });
   }
   for (const r of recovery.slice(0, 2)) {
@@ -458,6 +484,19 @@ export function buildCinematicBrief(data: AppData, now = new Date()): CinematicB
       ? bits.join(" · ")
       : "Local academic OS — planning from CourseLink sync + course blueprints.";
 
+
+  if (!systemNote && autonomy.gate.summary) {
+    systemNote = autonomy.gate.summary;
+  } else if (systemNote && autonomy.replanNote) {
+    systemNote = `${systemNote} · ${autonomy.replanNote}`;
+  } else if (!systemNote && autonomy.replanNote) {
+    systemNote = autonomy.replanNote;
+  }
+  if (autonomy.gate.needsRecheck && tone !== "offline" && tone !== "idle") {
+    // Provisional plan — keep focus but surface urgency around model gaps
+    if (tone === "clear") tone = "focus";
+  }
+
   return {
     generatedAt: now.toISOString(),
     greeting: `${greetWord}, ${name}.`,
@@ -477,5 +516,11 @@ export function buildCinematicBrief(data: AppData, now = new Date()): CinematicB
     },
     model,
     systemNote,
+    staleGaps: autonomy.gate.gaps,
+    staleSummary: autonomy.gate.summary,
+    recoveryPlan,
+    replanNote: autonomy.replanNote,
+    requestRecheck: autonomy.requestRecheck,
+    autonomy,
   };
 }

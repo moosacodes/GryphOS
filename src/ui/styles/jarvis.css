@@ -443,3 +443,17 @@
   .jarvis-cmd-trigger { width: 100%; }
   .jarvis-top-actions { justify-content: space-between; }
 }
+
+
+/* Planning autonomy — WHY ignore impact + stale warnings */
+.beat-ignore {
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--muted, #94a3b8);
+  opacity: 0.92;
+}
+.stale-chip {
+  border-color: color-mix(in oklab, #f59e0b 45%, var(--border));
+  background: color-mix(in oklab, #f59e0b 12%, transparent);
+}

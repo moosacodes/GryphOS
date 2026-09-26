@@ -6,9 +6,11 @@ import type { AppData, Assessment, Course, ChangeEvent } from "@/domain/types";
 import { deadlineSafetyFromAssessment } from "./deadlines";
 import {
   explainAssessment,
+  explainIgnoreImpact,
   formatWhy,
   isAssessmentOpen,
   scoreAssessmentPriority,
+  type IgnoreImpact,
 } from "./planningKnowledge";
 
 export type PriorityBucket =
@@ -30,6 +32,7 @@ export interface PriorityItem {
   explanation: string[];
   weightKnown: boolean;
   weightPercent: number | null;
+  ignoreImpact: IgnoreImpact | null;
 }
 
 function hoursUntil(iso: string | null, now: Date): number | null {
@@ -119,6 +122,11 @@ export function buildCommandCentreFromData(data: AppData, now = new Date()): Pri
       explanations.unshift(why);
     }
 
+    const impact = explainIgnoreImpact(data, a, now);
+    if (impact.summary && !explanations.some((e) => e.includes("If ignored"))) {
+      explanations.push(`If ignored: ${impact.summary}`);
+    }
+
     items.push({
       id: `pri:${a.id}`,
       bucket,
@@ -129,6 +137,7 @@ export function buildCommandCentreFromData(data: AppData, now = new Date()): Pri
       explanation: [...new Set(explanations)],
       weightKnown,
       weightPercent: w,
+      ignoreImpact: impact,
     });
   }
 
@@ -143,6 +152,7 @@ export function buildCommandCentreFromData(data: AppData, now = new Date()): Pri
       explanation: [ch.detail, "Unread change event"],
       weightKnown: false,
       weightPercent: null,
+      ignoreImpact: null,
     });
   }
 

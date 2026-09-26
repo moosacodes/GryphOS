@@ -25,3 +25,14 @@ Rebuild the *product surface* as a university J.A.R.V.I.S — not another planne
 - No chatbot / LLM
 - No inventing academic facts for the brief
 - No returning to left-nav CRUD as the home experience
+
+## Planning autonomy (v2.2.0)
+
+All in `src/engines/planningKnowledge.ts` (no new engine):
+
+- `explainAssessment` - WHY evidence: weight/blueprint, submission, due, relative deadline, best-N/drop, section timing, linked materials, dependencies/clarifications, grade rules.
+- `explainIgnoreImpact` - grade risk, schedule shift, next focus if skipped.
+- `detectStaleModelGaps` / `evaluatePlanningGate` - blueprint vs live sync (missing assessments, promised-count shortfall, weights, dates, materials, quality, section). Blocking gaps set `requestRecheck` -> TodayPage queues `pendingSync` (throttled 10 min).
+- `buildAutonomousRecoveryPlan` - after misses/overdue/plan-shifting changes, rebuild around still-actionable highest-impact work; defers absorbable best-N quizzes.
+- `replanTriggers` / `buildPlanningAutonomy` - change events (deadline, weight, grade, announcement, doc version, rule, section, cancellation) drive re-plan notes.
+

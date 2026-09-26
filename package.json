@@ -1,7 +1,7 @@
 {
   "name": "gryphos",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "type": "module",
   "description": "Privacy-first local-first academic OS for UofG \u2014 JARVIS-style brief, command surface, living My Day",
   "license": "MIT",
