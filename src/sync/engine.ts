@@ -1,5 +1,5 @@
 /**
- * Synchronization engine: CourseLink â†’ normalize â†’ reconcile â†’ local storage.
+ * Synchronization engine: CourseLink → normalize → reconcile → local storage.
  * Adapted from dawhatnow/gryphCal sync patterns (MIT).
  */
 import {
@@ -16,6 +16,7 @@ import {
   getVersions,
   getWhoAmI,
 } from "@/adapters/courselink/api";
+import { discoverCourseOutline } from "@/adapters/courselink/discoverOutlines";
 import { seedAcademicDates } from "@/adapters/uofg/academicDates";
 import { COURSE_COLORS, DEFAULT_CONCURRENCY, FUTURE_DAYS, PAST_DAYS } from "@/domain/constants";
 import type {
@@ -23,6 +24,7 @@ import type {
   AppData,
   Assessment,
   Course,
+  ImportedDocument,
   SourceRecord,
 } from "@/domain/types";
 import {
@@ -36,6 +38,7 @@ import {
 import { currentSemester, isLikelyCurrent, toCourse, toUser } from "@/normalize/course";
 import { reconcileAssessments } from "@/reconcile/merge";
 import { loadAppData, saveAppData } from "@/storage/repository";
+import { applyOutlineDocument } from "./applyOutline";
 import { mapLimit } from "./concurrency";
 
 const DAY = 864e5;
@@ -51,7 +54,7 @@ async function safe<T>(p: Promise<T>, onError?: () => void): Promise<T | null> {
 }
 
 function inWindow(a: Assessment, now = Date.now()): boolean {
-  if (!a.due.iso) return true; // keep undated items so outline/reconcile can fill them
+  if (!a.due.iso) return true;
   const t = Date.parse(a.due.iso);
   if (!Number.isFinite(t)) return true;
   return t >= now - PAST_DAYS * DAY && t <= now + FUTURE_DAYS * DAY;
@@ -61,6 +64,7 @@ async function syncCourse(course: Course, le: string): Promise<{
   assessments: Assessment[];
   sources: SourceRecord[];
   announcements: Announcement[];
+  outline: ImportedDocument | null;
   failed: boolean;
 }> {
   let failed = false;
@@ -68,14 +72,16 @@ async function syncCourse(course: Course, le: string): Promise<{
     failed = true;
   };
 
-  const [folders, quizzes, gradeObjects, gradeValues, news, events] = await Promise.all([
-    safe(getFolders(le, course.orgUnitId), markFailed),
-    safe(getQuizzes(le, course.orgUnitId), markFailed),
-    safe(getGradeObjects(le, course.orgUnitId)),
-    safe(getMyGradeValues(le, course.orgUnitId)),
-    safe(getNews(le, course.orgUnitId)),
-    safe(getCalendarEvents(le, course.orgUnitId)),
-  ]);
+  const [folders, quizzes, gradeObjects, gradeValues, news, events, outlineHit] =
+    await Promise.all([
+      safe(getFolders(le, course.orgUnitId), markFailed),
+      safe(getQuizzes(le, course.orgUnitId), markFailed),
+      safe(getGradeObjects(le, course.orgUnitId)),
+      safe(getMyGradeValues(le, course.orgUnitId)),
+      safe(getNews(le, course.orgUnitId)),
+      safe(getCalendarEvents(le, course.orgUnitId)),
+      safe(discoverCourseOutline(course, le)),
+    ]);
 
   const sources: SourceRecord[] = [];
   const rawAssessments: Assessment[] = [];
@@ -116,7 +122,13 @@ async function syncCourse(course: Course, le: string): Promise<{
     .map((n) => announcementFromNews(n, course))
     .filter((x): x is Announcement => x != null);
 
-  return { assessments: items, sources, announcements, failed };
+  return {
+    assessments: items,
+    sources,
+    announcements,
+    outline: outlineHit?.document ?? null,
+    failed,
+  };
 }
 
 function mergeOutlineAssessments(
@@ -209,9 +221,7 @@ export async function runSync(): Promise<void> {
           prev?.color ??
           COURSE_COLORS[i % COURSE_COLORS.length];
         const selected =
-          prevSelected.size > 0
-            ? prevSelected.has(mapped.id)
-            : isLikelyCurrent(mapped);
+          prevSelected.size > 0 ? prevSelected.has(mapped.id) : isLikelyCurrent(mapped);
         return {
           ...mapped,
           color,
@@ -238,9 +248,7 @@ export async function runSync(): Promise<void> {
       (data.preferences.selectedCourseIds ?? []).includes(c.id),
     );
 
-    const results = await mapLimit(selected, DEFAULT_CONCURRENCY, (c) =>
-      syncCourse(c, le),
-    );
+    const results = await mapLimit(selected, DEFAULT_CONCURRENCY, (c) => syncCourse(c, le));
 
     const failedCodes: string[] = [];
     const assessments: Assessment[] = [];
@@ -252,19 +260,43 @@ export async function runSync(): Promise<void> {
       assessments.push(...r.assessments);
       sources.push(...r.sources);
       announcements.push(...r.announcements);
+      if (r.outline) {
+        const courseId = selected[i].id;
+        const hasManual =
+          !!data.documents.find(
+            (d) => d.courseId === courseId && !d.id.startsWith("auto:") && !!d.parseResult,
+          ) &&
+          data.courses.find((c) => c.id === courseId)?.outlineDocumentId?.startsWith("auto:") ===
+            false &&
+          !!data.courses.find((c) => c.id === courseId)?.outlineDocumentId;
+        data = applyOutlineDocument(data, courseId, r.outline, {
+          preferExistingManual: hasManual,
+        });
+      }
     });
 
-    // Preserve assessments from non-selected courses; merge outline items per selected course
+    // Refresh course refs after outline apply
+    const coursesAfter = data.courses;
+
     const preserved = before.assessments.filter(
       (a) => !selected.some((c) => c.id === a.courseId),
     );
     let combined = [...preserved];
     for (const c of selected) {
+      const course = coursesAfter.find((x) => x.id === c.id) ?? c;
       const courseItems = assessments.filter((a) => a.courseId === c.id);
-      combined.push(...mergeOutlineAssessments(c, courseItems, data));
+      // If applyOutline already merged assessments into data, prefer those for the course
+      const fromData = data.assessments.filter((a) => a.courseId === c.id);
+      const hasOutlineItems = fromData.some((a) => a.id.startsWith("outline:"));
+      if (hasOutlineItems) {
+        const clOnly = courseItems.filter((a) => !a.id.startsWith("outline:"));
+        const outlineOnly = fromData.filter((a) => a.id.startsWith("outline:"));
+        combined.push(...reconcileAssessments([...clOnly, ...outlineOnly]).assessments);
+      } else {
+        combined.push(...mergeOutlineAssessments(course, courseItems, data));
+      }
     }
 
-    // Manual overrides from previous data
     const prevById = new Map(before.assessments.map((a) => [a.id, a]));
     combined = combined.map((a) => {
       const prev = prevById.get(a.id);
@@ -272,20 +304,21 @@ export async function runSync(): Promise<void> {
       return {
         ...a,
         manualOverrides: prev.manualOverrides,
-        // Keep user corrections
         ...(Object.keys(prev.manualOverrides).length
           ? {
-              title: typeof prev.manualOverrides.title === "string" ? (prev.manualOverrides.title as string) : a.title,
+              title:
+                typeof prev.manualOverrides.title === "string"
+                  ? (prev.manualOverrides.title as string)
+                  : a.title,
             }
           : {}),
       };
     });
 
     const reconciled = reconcileAssessments(combined);
-    const term = currentSemester(courses);
+    const term = currentSemester(coursesAfter);
     const academicDates = seedAcademicDates(term);
 
-    // Preserve documents, people, etc.
     data = {
       ...data,
       assessments: reconciled.assessments,
@@ -326,4 +359,3 @@ export async function runSync(): Promise<void> {
     });
   }
 }
-

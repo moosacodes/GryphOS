@@ -178,12 +178,12 @@ export function DocumentsPage({
       <div className="page-header">
         <div>
           <h1>Documents</h1>
-          <p>Import course outlines (PDF, text, HTML). Parsing is local and deterministic.</p>
+          <p>Outlines are discovered automatically during CourseLink sync when content files are available. Manual import below is a fallback. Parsing is local and deterministic.</p>
         </div>
       </div>
 
       <div className="card" style={{ marginBottom: "1rem" }}>
-        <h2>Import outline</h2>
+        <h2>Manual import (fallback)</h2>
         <div className="field">
           <label htmlFor="course">Associate with course</label>
           <select id="course" defaultValue={data.courses[0]?.id ?? ""}>

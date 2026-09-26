@@ -1,18 +1,23 @@
 /**
  * Extract text from a PDF in the browser using pdf.js.
- * Falls back with a clear error if the PDF cannot be parsed.
+ * Works in the full app and in the CourseLink content script.
  */
 export async function extractPdfText(data: ArrayBuffer): Promise<string> {
   const pdfjs = await import("pdfjs-dist");
-  // Vite will bundle the worker; set a CDN-free data worker when available.
-  if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
+
+  if (pdfjs.GlobalWorkerOptions) {
     try {
-      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-        "pdfjs-dist/build/pdf.worker.min.mjs",
-        import.meta.url,
-      ).toString();
+      if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+        // Stable path copied into dist/ by the build script
+        pdfjs.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL("pdf.worker.min.mjs");
+      } else {
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+          "pdfjs-dist/build/pdf.worker.min.mjs",
+          import.meta.url,
+        ).toString();
+      }
     } catch {
-      // Worker may be unavailable in some extension contexts; pdf.js can still parse small docs.
+      // Worker may be unavailable; pdf.js may still parse on the main thread in some builds.
     }
   }
 

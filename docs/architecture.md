@@ -16,7 +16,8 @@ localhost, and no terminal need to stay open for normal use.
 |--------|------|
 | Content script | Runs on CourseLink; performs authenticated `fetch` with cookies |
 | Service worker | Lightweight message helpers |
-| Popup | Compact next-deadline / sync / open app |
+| Popup | Compact controls; opens/toggles in-page panel |
+| In-page panel | Primary UI iframe on CourseLink (`panel.html`) |
 | App (`app.html`) | Full dashboard, calendar, courses, grades, tasks, documents, settings |
 
 ## Storage

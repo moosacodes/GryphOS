@@ -1,7 +1,8 @@
-/** Content script: injected into CourseLink pages to sync with the student session. */
+/** Content script: CourseLink sync + in-page gryphOS panel. */
 import { SYNC_STALE_MS } from "@/domain/constants";
 import { loadAppData } from "@/storage/repository";
 import { runSync } from "@/sync/engine";
+import { setPanelOpen, togglePanel } from "./panelHost";
 
 let running: Promise<void> | null = null;
 
@@ -20,6 +21,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ ok: false, error: String((e as Error).message ?? e) }),
       );
     return true;
+  }
+  if (msg?.type === "GRYPHOS_TOGGLE_PANEL") {
+    const open = togglePanel();
+    sendResponse({ ok: true, open });
+    return false;
+  }
+  if (msg?.type === "GRYPHOS_OPEN_PANEL") {
+    setPanelOpen(true);
+    sendResponse({ ok: true, open: true });
+    return false;
   }
   if (msg?.type === "GRYPHOS_PING") {
     sendResponse({ ok: true });

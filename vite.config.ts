@@ -18,6 +18,7 @@ export default defineConfig({
       input: {
         app: root("app.html"),
         popup: root("popup.html"),
+        panel: root("panel.html"),
       },
     },
   },

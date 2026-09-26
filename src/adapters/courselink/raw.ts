@@ -91,3 +91,29 @@ export interface RawCalendarEvent {
   IsAllDayEvent?: boolean;
   OrgUnitId?: number;
 }
+
+export interface RawContentTopic {
+  TopicId?: number;
+  Id?: number;
+  Title: string;
+  ShortTitle?: string | null;
+  Url?: string | null;
+  TopicType?: number; // 1 = file
+  Type?: number;
+  IsHidden?: boolean;
+  IsLocked?: boolean;
+  LastModifiedDate?: string | null;
+}
+
+export interface RawContentModule {
+  ModuleId?: number;
+  Id?: number;
+  Title: string;
+  Topics?: RawContentTopic[];
+  Modules?: RawContentModule[];
+  IsHidden?: boolean;
+}
+
+export interface RawContentToc {
+  Modules?: RawContentModule[];
+}

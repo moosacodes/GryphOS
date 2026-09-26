@@ -3,7 +3,7 @@ import type { AppData } from "@/domain/types";
 import { emptyAppData } from "@/storage/schema";
 import { loadAppData, subscribe } from "@/storage/repository";
 import { classifyTaskStatus } from "@/engines/status";
-import { openApp, openCourseLink, requestSync } from "@/shared/actions";
+import { openApp, openCourseLink, requestSync, toggleCourseLinkPanel } from "@/shared/actions";
 import { effectiveStatus } from "@/storage/chromeStore";
 import { useTheme } from "@/ui/hooks/useTheme";
 import "@/ui/styles/global.css";
@@ -41,7 +41,7 @@ export function Popup() {
   const courseMap = new Map(data.courses.map((c) => [c.id, c]));
   const overdue = assessments.filter((a) => classifyTaskStatus(a) === "overdue");
   const today = assessments.filter((a) => classifyTaskStatus(a) === "due_today");
-  const tomorrow = assessments.filter((a) => classifyTaskStatus(a) === "due_soon").slice(0, 5);
+  const soon = assessments.filter((a) => classifyTaskStatus(a) === "due_soon").slice(0, 5);
   const next = assessments
     .filter((a) => a.due.iso && Date.parse(a.due.iso) >= Date.now() && a.submissionState !== "submitted")
     .sort((a, b) => Date.parse(a.due.iso!) - Date.parse(b.due.iso!))[0];
@@ -49,47 +49,40 @@ export function Popup() {
   const firstRun = !data.sync.lastSyncedAt && data.courses.length === 0;
 
   return (
-    <div style={{ width: 340, padding: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <strong>gryph<span style={{ color: "var(--accent)" }}>OS</span></strong>
+    <div className="popup-shell">
+      <div className="popup-top">
+        <strong className="panel-brand">gryph<span>OS</span></strong>
         <span className={status === "signed_out" || status === "error" ? "badge badge-warn" : "badge"}>
           {syncLabel(status, data.sync.lastSyncedAt)}
         </span>
       </div>
 
       {firstRun && (
-        <div className="card" style={{ marginBottom: 8, padding: "0.65rem", background: "var(--bg-muted)" }}>
-          <div className="small" style={{ fontWeight: 600 }}>Runs entirely in Chrome</div>
+        <div className="card card-tight muted-card">
+          <div className="small" style={{ fontWeight: 600 }}>On CourseLink</div>
           <div className="small muted">
-            No terminal or local server needed. Works in Brave and Opera GX. Sign in to CourseLink, then Sync.
+            Open the side panel on CourseLink for day-to-day use. No terminal needed.
           </div>
         </div>
       )}
 
       {status === "signed_out" && (
-        <div className="conflict-banner" style={{ marginBottom: 8 }} role="alert">
+        <div className="conflict-banner" role="alert">
           <div style={{ fontWeight: 600 }}>Signed out of CourseLink</div>
           <div className="small" style={{ marginTop: 4 }}>
             Open CourseLink and sign in, then Sync again.
           </div>
-          <button
-            type="button"
-            className="btn"
-            style={{ marginTop: 6 }}
-            onClick={() => void openCourseLink(true)}
-          >
+          <button type="button" className="btn btn-sm" style={{ marginTop: 6 }} onClick={() => void openCourseLink(true)}>
             Open CourseLink
           </button>
         </div>
       )}
 
       {overdue.length > 0 && status !== "signed_out" && (
-        <div className="conflict-banner" style={{ marginBottom: 8 }}>
-          ⚠ {overdue.length} overdue
-        </div>
+        <div className="conflict-banner">⚠ {overdue.length} overdue</div>
       )}
 
-      <div className="card" style={{ marginBottom: 8, padding: "0.7rem" }}>
+      <div className="card card-tight">
         <div className="small muted">Next deadline</div>
         {next ? (
           <div>
@@ -101,18 +94,21 @@ export function Popup() {
         )}
       </div>
 
-      <div className="small" style={{ marginBottom: 8 }}>
-        Today: <strong>{today.length}</strong> · Soon: <strong>{tomorrow.length}</strong>
+      <div className="small popup-meta">
+        Today: <strong>{today.length}</strong> · Soon: <strong>{soon.length}</strong>
       </div>
 
-      <div style={{ display: "flex", gap: 6 }}>
-        <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => void requestSync()}>
+      <div className="popup-actions">
+        <button type="button" className="btn btn-primary" onClick={() => void toggleCourseLinkPanel()}>
+          Open panel
+        </button>
+        <button type="button" className="btn" onClick={() => void requestSync()}>
           Sync
         </button>
-        <button type="button" className="btn" style={{ flex: 1 }} onClick={() => void openApp()}>
-          Open gryphOS
-        </button>
       </div>
+      <button type="button" className="btn btn-ghost" style={{ width: "100%", marginTop: 6 }} onClick={() => void openApp()}>
+        Full app (secondary)
+      </button>
     </div>
   );
 }

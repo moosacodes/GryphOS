@@ -7,6 +7,9 @@ import { COURSELINK_ORIGIN } from "@/domain/constants";
 import type {
   ObjectListPage,
   RawCalendarEvent,
+  RawContentModule,
+  RawContentToc,
+  RawContentTopic,
   RawCourse,
   RawCoursePage,
   RawEntityDropbox,
@@ -50,6 +53,21 @@ async function getJSON<T>(pathOrUrl: string): Promise<T> {
   const ct = res.headers.get("content-type") ?? "";
   if (!ct.includes("json")) throw new SignedOutError();
   return (await res.json()) as T;
+}
+
+async function getBinary(pathOrUrl: string): Promise<{ buffer: ArrayBuffer; contentType: string; filename: string }> {
+  const url = pathOrUrl.startsWith("http") ? pathOrUrl : COURSELINK_ORIGIN + pathOrUrl;
+  if (new URL(url).origin !== COURSELINK_ORIGIN) {
+    throw new Error(`Refusing to fetch ${url}`);
+  }
+  const res = await fetch(url, { credentials: "include" });
+  if (res.status === 401) throw new SignedOutError();
+  if (!res.ok) throw new HttpError(res.status, url);
+  const contentType = res.headers.get("content-type") ?? "application/octet-stream";
+  const cd = res.headers.get("content-disposition") ?? "";
+  const nameMatch = cd.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+  const filename = nameMatch ? decodeURIComponent(nameMatch[1].replace(/"/g, "")) : "download";
+  return { buffer: await res.arrayBuffer(), contentType, filename };
 }
 
 export async function getVersions(): Promise<{ lp: string; le: string }> {
@@ -121,13 +139,40 @@ export async function getCalendarEvents(
   ou: number,
 ): Promise<RawCalendarEvent[]> {
   try {
-    return await getJSON<RawCalendarEvent[]>(
-      `/d2l/api/le/${le}/${ou}/calendar/events/`,
-    );
+    return await getJSON<RawCalendarEvent[]>(`/d2l/api/le/${le}/${ou}/calendar/events/`);
   } catch (e) {
     if (e instanceof HttpError && (e.status === 403 || e.status === 404)) return [];
     throw e;
   }
 }
 
-export { getJSON };
+/** Full course content TOC when available. */
+export async function getContentToc(le: string, ou: number): Promise<RawContentModule[]> {
+  try {
+    const toc = await getJSON<RawContentToc | RawContentModule[]>(
+      `/d2l/api/le/${le}/${ou}/content/toc`,
+    );
+    if (Array.isArray(toc)) return toc;
+    return toc.Modules ?? [];
+  } catch (e) {
+    if (e instanceof HttpError && (e.status === 403 || e.status === 404)) {
+      try {
+        return await getJSON<RawContentModule[]>(`/d2l/api/le/${le}/${ou}/content/root/`);
+      } catch (e2) {
+        if (e2 instanceof HttpError && (e2.status === 403 || e2.status === 404)) return [];
+        throw e2;
+      }
+    }
+    throw e;
+  }
+}
+
+export async function getContentTopicFile(
+  le: string,
+  ou: number,
+  topicId: number,
+): Promise<{ buffer: ArrayBuffer; contentType: string; filename: string }> {
+  return getBinary(`/d2l/api/le/${le}/${ou}/content/topics/${topicId}/file?stream=1`);
+}
+
+export type { RawContentTopic, RawContentModule };
