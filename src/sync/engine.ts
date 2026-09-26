@@ -1,0 +1,329 @@
+/**
+ * Synchronization engine: CourseLink â†’ normalize â†’ reconcile â†’ local storage.
+ * Adapted from dawhatnow/gryphCal sync patterns (MIT).
+ */
+import {
+  HttpError,
+  SignedOutError,
+  getCalendarEvents,
+  getCourses,
+  getFolders,
+  getGradeObjects,
+  getMyGradeValues,
+  getMySubmissions,
+  getNews,
+  getQuizzes,
+  getVersions,
+  getWhoAmI,
+} from "@/adapters/courselink/api";
+import { seedAcademicDates } from "@/adapters/uofg/academicDates";
+import { COURSE_COLORS, DEFAULT_CONCURRENCY, FUTURE_DAYS, PAST_DAYS } from "@/domain/constants";
+import type {
+  Announcement,
+  AppData,
+  Assessment,
+  Course,
+  SourceRecord,
+} from "@/domain/types";
+import {
+  announcementFromNews,
+  applyGrades,
+  assessmentFromCalendarEvent,
+  fromFolder,
+  fromQuiz,
+  withSubmissions,
+} from "@/normalize/assessment";
+import { currentSemester, isLikelyCurrent, toCourse, toUser } from "@/normalize/course";
+import { reconcileAssessments } from "@/reconcile/merge";
+import { loadAppData, saveAppData } from "@/storage/repository";
+import { mapLimit } from "./concurrency";
+
+const DAY = 864e5;
+
+async function safe<T>(p: Promise<T>, onError?: () => void): Promise<T | null> {
+  try {
+    return await p;
+  } catch (e) {
+    if (e instanceof SignedOutError) throw e;
+    if (!(e instanceof HttpError && (e.status === 403 || e.status === 404))) onError?.();
+    return null;
+  }
+}
+
+function inWindow(a: Assessment, now = Date.now()): boolean {
+  if (!a.due.iso) return true; // keep undated items so outline/reconcile can fill them
+  const t = Date.parse(a.due.iso);
+  if (!Number.isFinite(t)) return true;
+  return t >= now - PAST_DAYS * DAY && t <= now + FUTURE_DAYS * DAY;
+}
+
+async function syncCourse(course: Course, le: string): Promise<{
+  assessments: Assessment[];
+  sources: SourceRecord[];
+  announcements: Announcement[];
+  failed: boolean;
+}> {
+  let failed = false;
+  const markFailed = () => {
+    failed = true;
+  };
+
+  const [folders, quizzes, gradeObjects, gradeValues, news, events] = await Promise.all([
+    safe(getFolders(le, course.orgUnitId), markFailed),
+    safe(getQuizzes(le, course.orgUnitId), markFailed),
+    safe(getGradeObjects(le, course.orgUnitId)),
+    safe(getMyGradeValues(le, course.orgUnitId)),
+    safe(getNews(le, course.orgUnitId)),
+    safe(getCalendarEvents(le, course.orgUnitId)),
+  ]);
+
+  const sources: SourceRecord[] = [];
+  const rawAssessments: Assessment[] = [];
+
+  for (const f of folders ?? []) {
+    const r = fromFolder(f, course);
+    if (r) {
+      rawAssessments.push(r.assessment);
+      sources.push(...r.sources);
+    }
+  }
+  for (const q of quizzes ?? []) {
+    const r = fromQuiz(q, course);
+    if (r) {
+      rawAssessments.push(r.assessment);
+      sources.push(...r.sources);
+    }
+  }
+  for (const e of events ?? []) {
+    const a = assessmentFromCalendarEvent(e, course);
+    if (a) rawAssessments.push(a);
+  }
+
+  let items = rawAssessments.filter((a) => inWindow(a));
+  items = await mapLimit(items, DEFAULT_CONCURRENCY, async (d) => {
+    if (!d.id.includes(":dropbox:")) return d;
+    const folderId = Number(d.id.split(":").pop());
+    if (!Number.isFinite(folderId)) return d;
+    return withSubmissions(
+      d,
+      await safe(getMySubmissions(le, course.orgUnitId, folderId)),
+    );
+  });
+
+  items = applyGrades(items, gradeObjects ?? [], gradeValues ?? []);
+
+  const announcements = (news ?? [])
+    .map((n) => announcementFromNews(n, course))
+    .filter((x): x is Announcement => x != null);
+
+  return { assessments: items, sources, announcements, failed };
+}
+
+function mergeOutlineAssessments(
+  course: Course,
+  existing: Assessment[],
+  data: AppData,
+): Assessment[] {
+  const doc = data.documents.find((d) => d.id === course.outlineDocumentId);
+  if (!doc?.parseResult) return existing;
+  const fromOutline: Assessment[] = doc.parseResult.assessments.map((oa, i) => ({
+    id: `outline:${course.id}:${i}:${oa.title.toLowerCase().replace(/\s+/g, "-")}`,
+    courseId: course.id,
+    title: oa.title,
+    type: oa.type,
+    due: {
+      certainty: oa.certainty,
+      iso: oa.dueIso,
+      label: oa.dueLabel,
+    },
+    start: { certainty: "unknown", iso: null, label: null },
+    end: { certainty: "unknown", iso: null, label: null },
+    weightPercent: oa.weightPercent,
+    pointsPossible: null,
+    pointsEarned: null,
+    submissionState: "unknown" as const,
+    submittedAt: null,
+    gradeDisplay: null,
+    url: null,
+    notes: null,
+    categoryId: null,
+    isBonus: false,
+    sourceRecords: [],
+    fieldProvenance: {
+      weightPercent: {
+        value: oa.weightPercent,
+        sourceType: "course_outline",
+        sourceId: doc.id,
+        confidence: oa.confidence,
+        retrievedAt: doc.importedAt,
+      },
+      due: {
+        value: { certainty: oa.certainty, iso: oa.dueIso, label: oa.dueLabel },
+        sourceType: "course_outline",
+        sourceId: doc.id,
+        confidence: oa.confidence,
+        retrievedAt: doc.importedAt,
+      },
+    },
+    conflictIds: [],
+    manualOverrides: {},
+    updatedAt: new Date().toISOString(),
+  }));
+  return [...existing, ...fromOutline];
+}
+
+export async function runSync(): Promise<void> {
+  const before = await loadAppData();
+  await saveAppData({
+    ...before,
+    pendingSync: false,
+    sync: {
+      ...before.sync,
+      status: "syncing",
+      startedAt: Date.now(),
+      message: null,
+    },
+  });
+
+  try {
+    const { lp, le } = await getVersions();
+    const who = await safe(getWhoAmI(lp));
+    let data = await loadAppData();
+    if (who) data = { ...data, user: toUser(who) };
+
+    const rawCourses = (await getCourses()).filter(
+      (c) => c.IsActive !== false && c.CanAccessCourse !== false,
+    );
+
+    const prevSelected = new Set(
+      data.preferences.selectedCourseIds ??
+        data.courses.filter((c) => c.selected).map((c) => c.id),
+    );
+
+    const courses = rawCourses
+      .map((c, i) => {
+        const mapped = toCourse(c, i);
+        const prev = data.courses.find((p) => p.id === mapped.id);
+        const color =
+          data.preferences.courseColors[mapped.id] ??
+          prev?.color ??
+          COURSE_COLORS[i % COURSE_COLORS.length];
+        const selected =
+          prevSelected.size > 0
+            ? prevSelected.has(mapped.id)
+            : isLikelyCurrent(mapped);
+        return {
+          ...mapped,
+          color,
+          selected,
+          outlineDocumentId: prev?.outlineDocumentId ?? null,
+          instructorNames: prev?.instructorNames ?? [],
+        };
+      })
+      .sort((a, b) => a.code.localeCompare(b.code));
+
+    if (data.preferences.selectedCourseIds == null) {
+      data = {
+        ...data,
+        preferences: {
+          ...data.preferences,
+          selectedCourseIds: courses.filter((c) => c.selected).map((c) => c.id),
+        },
+      };
+    }
+
+    data = { ...data, courses };
+
+    const selected = courses.filter((c) =>
+      (data.preferences.selectedCourseIds ?? []).includes(c.id),
+    );
+
+    const results = await mapLimit(selected, DEFAULT_CONCURRENCY, (c) =>
+      syncCourse(c, le),
+    );
+
+    const failedCodes: string[] = [];
+    const assessments: Assessment[] = [];
+    const sources: SourceRecord[] = [];
+    const announcements: Announcement[] = [];
+
+    results.forEach((r, i) => {
+      if (r.failed) failedCodes.push(selected[i].code);
+      assessments.push(...r.assessments);
+      sources.push(...r.sources);
+      announcements.push(...r.announcements);
+    });
+
+    // Preserve assessments from non-selected courses; merge outline items per selected course
+    const preserved = before.assessments.filter(
+      (a) => !selected.some((c) => c.id === a.courseId),
+    );
+    let combined = [...preserved];
+    for (const c of selected) {
+      const courseItems = assessments.filter((a) => a.courseId === c.id);
+      combined.push(...mergeOutlineAssessments(c, courseItems, data));
+    }
+
+    // Manual overrides from previous data
+    const prevById = new Map(before.assessments.map((a) => [a.id, a]));
+    combined = combined.map((a) => {
+      const prev = prevById.get(a.id);
+      if (!prev) return a;
+      return {
+        ...a,
+        manualOverrides: prev.manualOverrides,
+        // Keep user corrections
+        ...(Object.keys(prev.manualOverrides).length
+          ? {
+              title: typeof prev.manualOverrides.title === "string" ? (prev.manualOverrides.title as string) : a.title,
+            }
+          : {}),
+      };
+    });
+
+    const reconciled = reconcileAssessments(combined);
+    const term = currentSemester(courses);
+    const academicDates = seedAcademicDates(term);
+
+    // Preserve documents, people, etc.
+    data = {
+      ...data,
+      assessments: reconciled.assessments,
+      conflicts: [
+        ...before.conflicts.filter((c) => !c.unresolved),
+        ...reconciled.conflicts,
+      ],
+      sourceRecords: sources,
+      announcements,
+      academicDates,
+      sync: failedCodes.length
+        ? {
+            status: "error",
+            lastSyncedAt: before.sync.lastSyncedAt,
+            startedAt: null,
+            message: `couldn't load ${failedCodes.join(", ")}`,
+          }
+        : {
+            status: "idle",
+            lastSyncedAt: Date.now(),
+            startedAt: null,
+            message: null,
+          },
+    };
+
+    await saveAppData(data);
+  } catch (e) {
+    const signedOut = e instanceof SignedOutError;
+    const current = await loadAppData();
+    await saveAppData({
+      ...current,
+      sync: {
+        status: signedOut ? "signed_out" : "error",
+        lastSyncedAt: before.sync.lastSyncedAt,
+        startedAt: null,
+        message: signedOut ? null : String((e as Error).message ?? e),
+      },
+    });
+  }
+}
+

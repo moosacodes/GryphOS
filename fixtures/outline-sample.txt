@@ -1,0 +1,25 @@
+University of Guelph
+CIS*2520 — Data Structures
+Fall 2026
+
+Instructor: Dr. Jane Example
+Email: jexample@uoguelph.ca
+
+Office Hours:
+Tuesday 14:00-15:00
+
+Lecture Schedule:
+Mon/Wed 10:00-11:20
+
+Evaluation
+Assignment 1          10%
+Assignment 2          10%
+Quizzes               15%
+Midterm               25%  October 20
+Final Exam            40%
+
+Late Policy
+Late submissions lose 10% per day up to 3 days.
+
+Textbook
+Goodrich, Tamassia — Data Structures

@@ -1,0 +1,16 @@
+[
+  {
+    "QuizId": 701,
+    "Name": "Quiz 1",
+    "DueDate": "2026-09-25T15:00:00.000Z",
+    "EndDate": "2026-09-25T15:00:00.000Z",
+    "IsActive": true
+  },
+  {
+    "QuizId": 702,
+    "Name": "Midterm",
+    "DueDate": "2026-10-22T18:00:00.000Z",
+    "EndDate": "2026-10-22T20:00:00.000Z",
+    "IsActive": true
+  }
+]

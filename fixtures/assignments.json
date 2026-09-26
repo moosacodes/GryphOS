@@ -1,0 +1,19 @@
+[
+  {
+    "Id": 501,
+    "Name": "Assignment 1",
+    "DueDate": "2026-09-20T03:59:00.000Z",
+    "IsHidden": false,
+    "Availability": {
+      "StartDate": null,
+      "EndDate": "2026-09-20T03:59:00.000Z"
+    }
+  },
+  {
+    "Id": 502,
+    "Name": "Assignment 2",
+    "DueDate": "2026-10-16T03:59:00.000Z",
+    "IsHidden": false,
+    "Availability": null
+  }
+]

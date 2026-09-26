@@ -1,0 +1,38 @@
+{
+  "objects": [
+    {
+      "Id": 9001,
+      "Name": "Assignment 1",
+      "MaxPoints": 20,
+      "Weight": 10,
+      "AssociatedTool": {
+        "ToolId": 2000,
+        "ToolItemId": 501
+      }
+    },
+    {
+      "Id": 9002,
+      "Name": "Quiz 1",
+      "MaxPoints": 10,
+      "Weight": 5,
+      "AssociatedTool": {
+        "ToolId": 2001,
+        "ToolItemId": 701
+      }
+    }
+  ],
+  "values": [
+    {
+      "GradeObjectIdentifier": 9001,
+      "PointsNumerator": 18,
+      "PointsDenominator": 20,
+      "DisplayedGrade": "90 %"
+    },
+    {
+      "GradeObjectIdentifier": 9002,
+      "PointsNumerator": 8,
+      "PointsDenominator": 10,
+      "DisplayedGrade": "80 %"
+    }
+  ]
+}

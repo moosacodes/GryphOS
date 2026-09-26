@@ -1,0 +1,22 @@
+[
+  {
+    "OrgUnitId": "1001",
+    "Name": "CIS*2520*0101: Data Structures F26",
+    "Code": "CIS*2520*0101",
+    "IsActive": true,
+    "CanAccessCourse": true,
+    "StartDate": "2026-09-04T04:00:00.000Z",
+    "EndDate": "2026-12-16T04:00:00.000Z",
+    "SemesterName": "2026 Fall"
+  },
+  {
+    "OrgUnitId": "1002",
+    "Name": "MATH*1210*0101: Calculus II F26",
+    "Code": "MATH*1210*0101",
+    "IsActive": true,
+    "CanAccessCourse": true,
+    "StartDate": "2026-09-04T04:00:00.000Z",
+    "EndDate": "2026-12-16T04:00:00.000Z",
+    "SemesterName": "2026 Fall"
+  }
+]
