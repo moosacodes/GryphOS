@@ -642,6 +642,8 @@ export interface AppData {
   searchIndex: SearchIndexEntry[];
   courseBlueprints: import("@/documentIntelligence/types").CourseBlueprint[];
   documentMemories: import("@/documentIntelligence/types").DocumentMemoryEntry[];
+  /** Brightspace request trace from the most recent sync (diagnostics export). */
+  syncTrace?: import("@/diagnostics/trace").SyncTraceEntry[];
   sync: SyncState;
   preferences: Preferences;
   pendingSync: boolean;

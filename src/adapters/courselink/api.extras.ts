@@ -5,6 +5,7 @@
 import { COURSELINK_ORIGIN } from "@/domain/constants";
 import type { ApiExplorationEntry } from "@/domain/types";
 import { HttpError, SignedOutError } from "./api";
+import { countItems, recordSyncTrace } from "@/diagnostics/trace";
 
 export interface ExploreLog {
   entries: ApiExplorationEntry[];
@@ -30,6 +31,9 @@ async function getJSON<T>(
     if (res.status === 401) throw new SignedOutError();
     const ct = res.headers.get("content-type") ?? "";
     const usable = res.ok && ct.includes("json");
+    if (!usable) {
+      recordSyncTrace({ kind: "api", endpoint: url, status: res.status, ok: false, itemCount: null, bytes: null, ms: null, error: res.ok ? `non-JSON (${ct.slice(0, 40)})` : `HTTP ${res.status}`, note: note || null });
+    }
     if (log) {
       log.entries.push({
         id: `api:${Date.now()}:${log.entries.length}`,
@@ -44,9 +48,12 @@ async function getJSON<T>(
     }
     if (!res.ok) return { data: null, status: res.status };
     if (!ct.includes("json")) throw new SignedOutError();
-    return { data: (await res.json()) as T, status: res.status };
+    const json = (await res.json()) as T;
+    recordSyncTrace({ kind: "api", endpoint: url, status: res.status, ok: true, itemCount: countItems(json), bytes: null, ms: null, error: null, note: note || null });
+    return { data: json, status: res.status };
   } catch (e) {
     if (e instanceof SignedOutError) throw e;
+    recordSyncTrace({ kind: "api", endpoint: url, status: "network_error", ok: false, itemCount: null, bytes: null, ms: null, error: String((e as Error).message ?? e), note: note || null });
     if (log) {
       log.entries.push({
         id: `api:${Date.now()}:${log.entries.length}`,

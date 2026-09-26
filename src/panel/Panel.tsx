@@ -6,6 +6,7 @@ import { buildMyDay, type MyDayItem } from "@/engines/myday";
 import { effectiveStatus } from "@/storage/chromeStore";
 import { useTheme } from "@/ui/hooks/useTheme";
 import { openApp, openCourseLink, requestSync } from "@/shared/actions";
+import { DiagnosticsExport } from "@/ui/components/DiagnosticsExport";
 
 function syncCopy(data: AppData) {
   const status = effectiveStatus(data.sync);
@@ -187,6 +188,11 @@ export function Panel() {
             spotlight.map((item) => <MiniRow key={item.id} item={item} />)
           )}
         </div>
+      </section>
+
+      <section className="panel-section panel-diagnostics" aria-label="Diagnostics">
+        <h2>Diagnostics</h2>
+        <DiagnosticsExport data={data} compact />
       </section>
 
       <footer className="panel-foot">

@@ -50,6 +50,7 @@ export function emptyAppData(): AppData {
     searchIndex: [],
     courseBlueprints: [],
     documentMemories: [],
+    syncTrace: [],
     sync: { ...DEFAULT_SYNC },
     preferences: { ...DEFAULT_PREFERENCES, courseColors: {} },
     pendingSync: false,

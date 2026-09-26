@@ -4,6 +4,7 @@
  * Adapted from dawhatnow/gryphCal (MIT).
  */
 import { COURSELINK_ORIGIN } from "@/domain/constants";
+import { countItems, recordSyncTrace } from "@/diagnostics/trace";
 import type {
   ObjectListPage,
   RawCalendarEvent,
@@ -44,15 +45,35 @@ async function getJSON<T>(pathOrUrl: string): Promise<T> {
   if (new URL(url).origin !== COURSELINK_ORIGIN) {
     throw new Error(`Refusing to fetch ${url}`);
   }
-  const res = await fetch(url, {
-    credentials: "include",
-    headers: { Accept: "application/json" },
-  });
-  if (res.status === 401) throw new SignedOutError();
-  if (!res.ok) throw new HttpError(res.status, url);
+  const t0 = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+  } catch (e) {
+    recordSyncTrace({ kind: "api", endpoint: url, status: "network_error", ok: false, itemCount: null, bytes: null, ms: Date.now() - t0, error: String((e as Error).message ?? e), note: null });
+    throw e;
+  }
+  const trace = (ok: boolean, itemCount: number | null, error: string | null) =>
+    recordSyncTrace({ kind: "api", endpoint: url, status: res.status, ok, itemCount, bytes: null, ms: Date.now() - t0, error, note: null });
+  if (res.status === 401) {
+    trace(false, null, "401 signed out");
+    throw new SignedOutError();
+  }
+  if (!res.ok) {
+    trace(false, null, `HTTP ${res.status}`);
+    throw new HttpError(res.status, url);
+  }
   const ct = res.headers.get("content-type") ?? "";
-  if (!ct.includes("json")) throw new SignedOutError();
-  return (await res.json()) as T;
+  if (!ct.includes("json")) {
+    trace(false, null, `non-JSON response (${ct.slice(0, 40)}) — treated as signed out`);
+    throw new SignedOutError();
+  }
+  const json = (await res.json()) as T;
+  trace(true, countItems(json), null);
+  return json;
 }
 
 async function getBinary(pathOrUrl: string): Promise<{ buffer: ArrayBuffer; contentType: string; filename: string }> {
@@ -60,14 +81,26 @@ async function getBinary(pathOrUrl: string): Promise<{ buffer: ArrayBuffer; cont
   if (new URL(url).origin !== COURSELINK_ORIGIN) {
     throw new Error(`Refusing to fetch ${url}`);
   }
-  const res = await fetch(url, { credentials: "include" });
+  const t0 = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(url, { credentials: "include" });
+  } catch (e) {
+    recordSyncTrace({ kind: "file", endpoint: url, status: "network_error", ok: false, itemCount: null, bytes: null, ms: Date.now() - t0, error: String((e as Error).message ?? e), note: null });
+    throw e;
+  }
+  if (res.status === 401 || !res.ok) {
+    recordSyncTrace({ kind: "file", endpoint: url, status: res.status, ok: false, itemCount: null, bytes: null, ms: Date.now() - t0, error: `HTTP ${res.status}`, note: null });
+  }
   if (res.status === 401) throw new SignedOutError();
   if (!res.ok) throw new HttpError(res.status, url);
   const contentType = res.headers.get("content-type") ?? "application/octet-stream";
   const cd = res.headers.get("content-disposition") ?? "";
   const nameMatch = cd.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
   const filename = nameMatch ? decodeURIComponent(nameMatch[1].replace(/"/g, "")) : "download";
-  return { buffer: await res.arrayBuffer(), contentType, filename };
+  const buffer = await res.arrayBuffer();
+  recordSyncTrace({ kind: "file", endpoint: url, status: res.status, ok: true, itemCount: null, bytes: buffer.byteLength, ms: Date.now() - t0, error: null, note: `${contentType.split(";")[0]} ${filename}`.slice(0, 160) });
+  return { buffer, contentType, filename };
 }
 
 export async function getVersions(): Promise<{ lp: string; le: string }> {

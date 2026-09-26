@@ -52,3 +52,11 @@ data** in Settings. There is nothing hosted elsewhere to delete.
 
 Independent student project. Not made, endorsed, or supported by the University
 of Guelph or D2L.
+
+## Diagnostics export (v2.3.0+)
+
+"Export diagnostics" (CourseLink panel → Diagnostics, app Settings → Diagnostics, or app Systems menu) writes a JSON
+file to your Downloads folder. It is generated locally and never uploaded. By default it redacts your name, student/user
+id, email addresses, grade values and discussion post bodies; "Include grades" keeps grade values. Cookies, tokens,
+passwords, request headers and response bodies are never included. Outline text excerpts (first ~3000 characters,
+still redacted) can be excluded with "Include outline text".

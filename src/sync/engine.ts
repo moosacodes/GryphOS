@@ -51,6 +51,7 @@ import type {
 } from "@/domain/types";
 import type { EntityLink, ExtractedFact } from "@/domain/facts";
 import { HttpError } from "@/adapters/courselink/api";
+import { resetSyncTrace, takeSyncTrace } from "@/diagnostics/trace";
 
 async function safe<T>(p: Promise<T>): Promise<T | null> {
   try {
@@ -180,6 +181,7 @@ function setCourseOutlineStatus(
 }
 
 export async function runSync(): Promise<void> {
+  resetSyncTrace();
   const before = await loadAppData();
   await saveAppData({
     ...before,
@@ -586,7 +588,7 @@ export async function runSync(): Promise<void> {
           },
     };
 
-    data = { ...data, searchIndex: rebuildSearchIndex(data) };
+    data = { ...data, searchIndex: rebuildSearchIndex(data), syncTrace: takeSyncTrace() };
 
     await saveAppData(data);
   } catch (e) {
@@ -594,6 +596,7 @@ export async function runSync(): Promise<void> {
     const current = await loadAppData();
     await saveAppData({
       ...current,
+      syncTrace: takeSyncTrace(),
       sync: {
         status: signedOut ? "signed_out" : "error",
         lastSyncedAt: before.sync.lastSyncedAt,

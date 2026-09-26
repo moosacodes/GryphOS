@@ -30,6 +30,22 @@ import {
   SignedOutError,
 } from "./api";
 import type { RawContentModule, RawContentTopic } from "./raw";
+import { recordSyncTrace } from "@/diagnostics/trace";
+
+function traceCandidate(course: Course, title: string, score: number, note: string, ok = false): void {
+  recordSyncTrace({
+    kind: "outline_candidate",
+    endpoint: title,
+    orgUnitId: course.orgUnitId,
+    status: null,
+    ok,
+    itemCount: null,
+    bytes: null,
+    ms: null,
+    error: null,
+    note: `score=${score} · ${note}`,
+  });
+}
 
 const OUTLINE_NAME =
   /\b(course[\s_-]*outline|syllabus|course\s*info(?:rmation)?|welcome\s*package|course\s*overview|grading\s*scheme|evaluation\s*scheme|assessment\s*overview)\b/i;
@@ -236,6 +252,17 @@ async function fetchContentUrl(
         : `${COURSELINK_ORIGIN}/${pathOrUrl}`;
     if (new URL(url).origin !== COURSELINK_ORIGIN) return null;
     const res = await fetch(url, { credentials: "include", redirect: "follow" });
+    recordSyncTrace({
+      kind: "file",
+      endpoint: url,
+      status: res.status,
+      ok: res.ok,
+      itemCount: null,
+      bytes: null,
+      ms: null,
+      error: res.ok ? null : `HTTP ${res.status}`,
+      note: (res.headers.get("content-type") ?? "").split(";")[0] || null,
+    });
     if (res.status === 401 || res.status === 403) {
       return {
         buffer: null,
@@ -348,6 +375,9 @@ export async function discoverCourseOutline(
     .slice(0, 14);
 
   let tried = 0;
+  if (ranked.length === 0) {
+    traceCandidate(course, "(no content topic scored as outline)", 0, `${topics.length} content topic(s) scanned`);
+  }
 
   for (const cand of ranked) {
     tried += 1;
@@ -380,7 +410,10 @@ export async function discoverCourseOutline(
       }
     }
 
-    if (!file || !file.buffer || file.buffer.byteLength === 0) continue;
+    if (!file || !file.buffer || file.buffer.byteLength === 0) {
+      traceCandidate(course, cand.title, cand.score, "no downloadable file (blocked, empty or not a file topic)");
+      continue;
+    }
 
     const understood = await parseOutlineBuffer(
       file.buffer,
@@ -389,14 +422,21 @@ export async function discoverCourseOutline(
       { courseId: course.id, documentId: `auto:${course.id}:topic:${cand.id ?? "url"}` },
     );
     const text = understood.text;
-    if (!text || text.trim().length < 80) continue;
+    if (!text || text.trim().length < 80) {
+      traceCandidate(course, cand.title, cand.score, `extracted text too short (${text?.trim().length ?? 0} chars, ${file.buffer.byteLength} bytes, ${file.contentType.split(";")[0]})`);
+      continue;
+    }
 
     const contentScore = scoreOutlineContents(text);
     const parseResult = understood.result;
     const combinedScore = cand.score + Math.min(40, contentScore);
     const strong = looksLikeOutline(parseResult, combinedScore);
     // Keep high-scoring named files even if parse is weak (semester planning)
-    if (!strong && combinedScore < 55) continue;
+    if (!strong && combinedScore < 55) {
+      traceCandidate(course, cand.title, combinedScore, `rejected: weak parse (${parseResult.assessments.length} assessments, confidence ${parseResult.confidence.toFixed(2)})`);
+      continue;
+    }
+    traceCandidate(course, cand.title, combinedScore, `accepted (${parseResult.assessments.length} assessments, confidence ${parseResult.confidence.toFixed(2)}, ${text.length} chars)`, true);
 
     const document = {
       ...buildDoc(

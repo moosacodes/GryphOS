@@ -5,6 +5,7 @@ import { buildIcs } from "@/engines/ics";
 import { mergeCalendarByUid, parseIcs } from "@/engines/icsImport";
 import { resetAllData } from "@/storage/repository";
 import { SyncButton } from "../components/SyncButton";
+import { DiagnosticsExport } from "../components/DiagnosticsExport";
 import { openCourseLink } from "@/shared/actions";
 
 export function SettingsPage({
@@ -109,6 +110,18 @@ export function SettingsPage({
       </div>
 
       <div className="grid grid-2">
+        <div className="card" id="diagnostics" style={{ gridColumn: "1 / -1" }}>
+          <h2>Diagnostics</h2>
+          <p className="small muted">
+            Something looks wrong? Export a JSON snapshot of what Sync fetched from CourseLink, how each outline
+            was parsed, the reconciled course model, and today&apos;s Brief — plus a list of likely problems.
+          </p>
+          <DiagnosticsExport data={data} />
+          <p className="small muted" style={{ marginTop: 8 }}>
+            <Link to="/coverage">Source coverage</Link> — per-source counts after Sync.
+          </p>
+        </div>
+
         <div className="card">
           <h2>Product</h2>
           <label className="small" style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -286,16 +299,6 @@ export function SettingsPage({
           </button>
         </div>
 
-        <div className="card">
-          <h2>Diagnostics</h2>
-          <p className="small muted">
-            Per-source counts after Sync (what Brightspace actually returned). Use when something looks
-            empty — not a primary feature.
-          </p>
-          <Link className="btn btn-sm" to="/coverage">
-            Source coverage
-          </Link>
-        </div>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import { effectiveStatus } from "@/storage/chromeStore";
 import { buildCinematicBrief } from "@/engines/brief";
 import { SyncButton } from "./SyncButton";
 import { CommandPalette } from "./CommandPalette";
+import { downloadDiagnostics } from "./DiagnosticsExport";
 
 const SYSTEMS = [
   { to: "/inbox", label: "Inbox" },
@@ -126,6 +127,17 @@ export function Shell({
                     {s.label}
                   </Link>
                 ))}
+                <button
+                  type="button"
+                  role="menuitem"
+                  title="Redacted JSON (no grades) — options in Settings → Diagnostics"
+                  onClick={() => {
+                    setSystemsOpen(false);
+                    downloadDiagnostics(data, { includeGrades: false, includeOutlineText: true });
+                  }}
+                >
+                  Export diagnostics
+                </button>
                 {status === "signed_out" && (
                   <button
                     type="button"
