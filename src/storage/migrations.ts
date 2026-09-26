@@ -1,6 +1,7 @@
 import { STORAGE_SCHEMA_VERSION } from "@/domain/constants";
 import type { AppData, Assessment, Course, Meeting, AcademicItemState } from "@/domain/types";
 import { DEFAULT_ITEM_STATE } from "@/domain/types";
+import { ensureTypedRule } from "@/domain/rules";
 import { emptyAppData } from "./schema";
 
 type Migration = (data: AppData) => AppData;
@@ -10,6 +11,23 @@ function ensureState(s?: Partial<AcademicItemState> | null): AcademicItemState {
 }
 
 const migrations: Record<number, Migration> = {
+  3: (data) => ({
+    ...data,
+    sourceArtifacts: data.sourceArtifacts ?? [],
+    extractedFacts: data.extractedFacts ?? [],
+    entityLinks: data.entityLinks ?? [],
+    meetingPatterns: data.meetingPatterns ?? [],
+    meetingOccurrences: data.meetingOccurrences ?? [],
+    contentModules: data.contentModules ?? [],
+    contentItems: data.contentItems ?? [],
+    calculationStates: data.calculationStates ?? [],
+    academicRules: (data.academicRules ?? []).map((r) => ensureTypedRule(r as never)),
+    announcements: (data.announcements ?? []).map((n) => ({
+      ...n,
+      extractedFactIds: n.extractedFactIds ?? [],
+      bodyHash: n.bodyHash ?? null,
+    })),
+  }),
   2: (data) => ({
     ...data,
     academicRules: data.academicRules ?? [],
@@ -101,5 +119,19 @@ export function migrate(raw: unknown): AppData {
   data.actionLog = data.actionLog ?? [];
   data.externalActivities = data.externalActivities ?? [];
   data.whatIfOverrides = data.whatIfOverrides ?? [];
+  data.sourceArtifacts = data.sourceArtifacts ?? [];
+  data.extractedFacts = data.extractedFacts ?? [];
+  data.entityLinks = data.entityLinks ?? [];
+  data.meetingPatterns = data.meetingPatterns ?? [];
+  data.meetingOccurrences = data.meetingOccurrences ?? [];
+  data.contentModules = data.contentModules ?? [];
+  data.contentItems = data.contentItems ?? [];
+  data.calculationStates = data.calculationStates ?? [];
+  data.academicRules = (data.academicRules ?? []).map((r) => ensureTypedRule(r as never));
+  data.announcements = (data.announcements ?? []).map((n) => ({
+    ...n,
+    extractedFactIds: (n as { extractedFactIds?: string[] }).extractedFactIds ?? [],
+    bodyHash: (n as { bodyHash?: string | null }).bodyHash ?? null,
+  }));
   return data;
 }

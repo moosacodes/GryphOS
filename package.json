@@ -1,7 +1,7 @@
 {
   "name": "gryphos",
   "private": true,
-  "version": "1.3.0",
+  "version": "1.4.0",
   "type": "module",
   "description": "Privacy-first local-first academic OS for UofG CourseLink (Brave / Opera GX / Chromium)",
   "license": "MIT",
@@ -12,11 +12,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "dev:ui": "vite",
-    "dev": "vite"
+    "dev": "vite",
+    "semantic-snapshot": "node scripts/semantic-snapshot.mjs"
   },
   "dependencies": {
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
+    "ical.js": "^2.2.1",
     "idb": "^8.0.2",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",

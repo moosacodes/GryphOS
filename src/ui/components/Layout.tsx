@@ -5,7 +5,7 @@ import { effectiveStatus } from "@/storage/chromeStore";
 import { SyncButton } from "./SyncButton";
 
 const LINKS = [
-  { to: "/", label: "Today", end: true },
+  { to: "/", label: "Command", end: true },
   { to: "/calendar", label: "Calendar" },
   { to: "/courses", label: "Courses" },
   { to: "/grades", label: "Grades" },

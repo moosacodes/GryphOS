@@ -2,7 +2,8 @@
 import { useAppData } from "./hooks/useStore";
 import { useTheme } from "./hooks/useTheme";
 import { Layout } from "./components/Layout";
-import { Dashboard } from "./pages/Dashboard";
+import { CommandCentre } from "./pages/CommandCentre";
+import { AssessmentDetailPage } from "./pages/AssessmentDetailPage";
 import { CalendarPage } from "./pages/CalendarPage";
 import { CoursesPage } from "./pages/CoursesPage";
 import { CourseDetailPage } from "./pages/CourseDetailPage";
@@ -28,7 +29,8 @@ export function App() {
     <HashRouter>
       <Routes>
         <Route element={<Layout data={data} />}>
-          <Route index element={<Dashboard data={data} update={update} />} />
+          <Route index element={<CommandCentre data={data} update={update} />} />
+          <Route path="assessment/:id" element={<AssessmentDetailPage data={data} />} />
           <Route path="calendar" element={<CalendarPage data={data} />} />
           <Route path="courses" element={<CoursesPage data={data} />} />
           <Route path="courses/:courseId" element={<CourseDetailPage data={data} />} />

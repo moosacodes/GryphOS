@@ -1,4 +1,10 @@
 /** Canonical domain model for gryphOS. UI and engines consume only these types. */
+export type { AcademicRule, LegacyAcademicRule } from "./rules";
+export { ensureTypedRule, migrateLegacyRule } from "./rules";
+export type { RecurringMeetingPattern, MeetingOccurrence, HolidayWindow } from "./meetings";
+export type { SourceArtifact, ExtractedFact, EntityLink, CalculationState, FactType } from "./facts";
+export type { AuthorityClass, DeadlineSafety } from "./authority";
+export type { CourseContentModule, CourseContentItem, DocumentClass } from "./content";
 
 export type SourceType =
   | "courselink_course"
@@ -202,6 +208,9 @@ export interface Announcement {
   /** Heuristic: announcement appears to change a deadline */
   deadlineChangeSignal: boolean;
   fromInstructorOrTa: boolean;
+  /** Extracted structured facts (not just a boolean) */
+  extractedFactIds: string[];
+  bodyHash: string | null;
 }
 
 export type ResourcePurpose =
@@ -349,28 +358,16 @@ export interface Preferences {
   courseColors: Record<string, string>;
   deadlineWarnHours: number;
   selectedCourseIds: string[] | null;
+  /** User-selected lecture/lab/tutorial sections — runtime personalization */
+  sectionConfigs: Array<{
+    courseId: string;
+    lectureSection?: string | null;
+    labSection?: string | null;
+    tutorialSection?: string | null;
+  }>;
 }
 
 
-export type AcademicRuleKind =
-  | "best_n"
-  | "drop_lowest"
-  | "relative_deadline"
-  | "section_relative"
-  | "attempt"
-  | "grade_cap"
-  | "threshold";
-
-export interface AcademicRule {
-  id: string;
-  courseId: string | null;
-  kind: AcademicRuleKind;
-  label: string;
-  /** Generic params ? never hardcoded course IDs inside the engine */
-  params: Record<string, unknown>;
-  sourceType: SourceType;
-  confidence: number;
-}
 
 export interface EvidenceFact {
   id: string;
@@ -392,6 +389,11 @@ export type ChangeEventKind =
   | "removed_assessment"
   | "grade_posted"
   | "announcement"
+  | "announcement_superseded"
+  | "document_version"
+  | "rule_changed"
+  | "section_changed"
+  | "occurrence_cancelled"
   | "other";
 
 export interface ChangeEvent {
@@ -476,9 +478,17 @@ export interface AppData {
   sourceRecords: SourceRecord[];
   conflicts: Conflict[];
   documents: ImportedDocument[];
-  academicRules: AcademicRule[];
+  academicRules: import("./rules").AcademicRule[];
   evidence: EvidenceFact[];
   changes: ChangeEvent[];
+  sourceArtifacts: import("./facts").SourceArtifact[];
+  extractedFacts: import("./facts").ExtractedFact[];
+  entityLinks: import("./facts").EntityLink[];
+  meetingPatterns: import("./meetings").RecurringMeetingPattern[];
+  meetingOccurrences: import("./meetings").MeetingOccurrence[];
+  contentModules: import("./content").CourseContentModule[];
+  contentItems: import("./content").CourseContentItem[];
+  calculationStates: import("./facts").CalculationState[];
   userTasks: UserTask[];
   calendarEvents: CalendarEventItem[];
   actionLog: ActionLogEntry[];
@@ -494,6 +504,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   courseColors: {},
   deadlineWarnHours: 48,
   selectedCourseIds: null,
+  sectionConfigs: [],
 };
 
 export const DEFAULT_SYNC: SyncState = {

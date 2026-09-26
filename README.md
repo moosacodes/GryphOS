@@ -17,6 +17,20 @@ terminal; leave it closed.
 
 ## Features
 
+### Semantic academic engine (Phase 5)
+
+- **No runtime course fixtures** — CIS*2430/2030/2520 schedules live only under `tests/fixtures/`
+- **MeetingOccurrence model** — relative deadlines attach to specific occurrences (never `Date.now()` / term-start / next Tuesday)
+- **Typed AcademicRule union** — BestN, CombinedComponentThreshold, OccurrenceRelativeDeadline, etc. (not `Record<string, unknown>`)
+- **Missed ≠ zero** — Best-N under incomplete data is provisional/projection, not definitive
+- **SourceArtifact / ExtractedFact** — authority classes, supersession, field-level reconciliation
+- **Command Centre** — explainable, weight-aware priorities; Assessment detail shows Why/provenance
+- **ICS via ical.js (RFC5545)** — category from import context; America/Toronto
+
+Honest limits: discussions/content hierarchy/search are modeled but CourseLink API coverage varies; external tools (Zybooks) need confirmation when no external state exists; some outline rules still need human review.
+
+## Features
+
 - **In-page CourseLink panel** — primary day-to-day UI is a side panel on the CourseLink site (toolbar popup opens/toggles it)
 - **Auto outline discovery** during sync (content TOC/Structure, overview, news) when Brightspace allows; positional PDF parsing for tables/weights; manual Documents import is the fallback
 - CourseLink sync via your signed-in browser session (no passwords)

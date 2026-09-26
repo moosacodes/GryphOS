@@ -1,5 +1,5 @@
-/**
- * Synchronization engine: CourseLink → normalize → reconcile → local storage.
+﻿/**
+ * Synchronization engine: CourseLink â†’ normalize â†’ reconcile â†’ local storage.
  * Adapted from dawhatnow/gryphCal sync patterns (MIT).
  */
 import {
@@ -46,8 +46,10 @@ import {
 import { currentSemester, isLikelyCurrent, toCourse, toUser } from "@/normalize/course";
 import { reconcileAssessments } from "@/reconcile/merge";
 import { loadAppData, saveAppData } from "@/storage/repository";
-import { applyPersonalization } from "@/adapters/uofg/personalization";
-import { applyRelativeDeadlines, applySectionRelativeDeadlines } from "@/engines/rules";
+import { applySectionConfig } from "@/adapters/uofg/personalization";
+import { applyOccurrenceDeadlines } from "@/engines/deadlines";
+import { patternsFromLegacyMeetings, generateOccurrences, courseKeyFromCode } from "@/domain/meetings";
+import { ensureTypedRule } from "@/domain/rules";
 import { DEFAULT_ITEM_STATE } from "@/domain/types";
 import { detectAssessmentChanges } from "./changes";
 import { applyOutlineDocument } from "./applyOutline";
@@ -387,7 +389,7 @@ export async function runSync(): Promise<void> {
       }
     });
 
-    const coursesAfter = data.courses;
+    let coursesAfter = data.courses;
 
     const preserved = before.assessments.filter(
       (a) => !selected.some((c) => c.id === a.courseId),
@@ -427,42 +429,40 @@ export async function runSync(): Promise<void> {
 
     let reconciled = reconcileAssessments(combined);
 
-    const personalized = applyPersonalization(
-      coursesAfter,
-      data.meetings,
-      data.people,
-      data.academicRules,
-    );
+    // Runtime personalization: user section config only â€” never inject CIS fixtures.
+    const sectionConfigs = (data.preferences as { sectionConfigs?: Array<{
+      courseId: string; lectureSection?: string | null; labSection?: string | null; tutorialSection?: string | null;
+    }> }).sectionConfigs ?? [];
+    coursesAfter = applySectionConfig(coursesAfter, sectionConfigs);
+    data = { ...data, courses: coursesAfter, academicRules: (data.academicRules ?? []).map((r) => ensureTypedRule(r as never)) };
+
+    // Build meeting patterns/occurrences from known meetings + semester window (not from "now").
+    const patterns = [];
+    const occurrences = [];
+    for (const c of coursesAfter) {
+      const rangeStart = (c.startDate ?? "2026-09-10").slice(0, 10);
+      const rangeEnd = (c.endDate ?? "2026-12-04").slice(0, 10);
+      const courseMeetings = data.meetings.filter((m) => m.courseId === c.id);
+      const pats = patternsFromLegacyMeetings(courseMeetings, rangeStart, rangeEnd, "ics");
+      patterns.push(...pats);
+      const key = courseKeyFromCode(c.code);
+      for (const pat of pats) {
+        occurrences.push(...generateOccurrences(pat, [], key));
+      }
+    }
     data = {
       ...data,
-      courses: personalized.courses,
-      meetings: personalized.meetings,
-      people: personalized.people,
-      academicRules: personalized.rules,
+      meetingPatterns: patterns,
+      meetingOccurrences: occurrences,
     };
 
-    const derived = [] as typeof reconciled.assessments;
-    for (const c of personalized.courses) {
-      const mine = reconciled.assessments.filter((a) => a.courseId === c.id);
-      const withRel = applyRelativeDeadlines(
-        mine,
-        personalized.meetings,
-        personalized.rules.filter((r) => r.courseId === c.id),
-        c.startDate,
-      );
-      derived.push(
-        ...applySectionRelativeDeadlines(
-          withRel,
-          personalized.meetings,
-          personalized.rules.filter((r) => r.courseId === c.id),
-          c.labSection,
-        ),
-      );
-    }
-    const others = reconciled.assessments.filter(
-      (a) => !personalized.courses.some((c) => c.id === a.courseId),
+    const typedRules = data.academicRules;
+    const { assessments: withDeadlines } = applyOccurrenceDeadlines(
+      reconciled.assessments,
+      occurrences,
+      typedRules,
     );
-    reconciled = { ...reconciled, assessments: [...others, ...derived] };
+    reconciled = { ...reconciled, assessments: withDeadlines };
 
     const newChanges = detectAssessmentChanges(before.assessments, reconciled.assessments);
     const changes = [...newChanges, ...(before.changes ?? []).filter((ch) => ch.read)].slice(0, 200);
@@ -509,7 +509,7 @@ export async function runSync(): Promise<void> {
             status: "error",
             lastSyncedAt: before.sync.lastSyncedAt,
             startedAt: null,
-            message: `couldn't load ${failedCodes.join(", ")}${outlineMsg ? ` · ${outlineMsg}` : ""}`,
+            message: `couldn't load ${failedCodes.join(", ")}${outlineMsg ? ` Â· ${outlineMsg}` : ""}`,
           }
         : {
             status: "idle",
@@ -534,3 +534,4 @@ export async function runSync(): Promise<void> {
     });
   }
 }
+

@@ -304,6 +304,8 @@ export function announcementFromNews(n: RawNewsItem, course: Course): Announceme
     publishedAt: n.StartDate,
     url: `${COURSELINK_ORIGIN}/d2l/le/news/${course.orgUnitId}/${n.Id}/view`,
     deadlineChangeSignal: /\b(due|deadline|extended|extension|postponed)\b/i.test(blob),
+    extractedFactIds: [],
+    bodyHash: null,
     fromInstructorOrTa: true, // CourseLink news is typically staff-authored
   };
 }

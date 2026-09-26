@@ -1,0 +1,76 @@
+{
+  "generatedAt": "2026-09-26T15:47:32.901Z",
+  "timezone": "America/Toronto",
+  "version": "phase5-semantic-snapshot",
+  "answers": [
+    {
+      "q": 1,
+      "answer": "CIS*2430 Lab 2 expected due 2026-10-07 23:59 EDT",
+      "provenance": "Assessment \"Lab 2\" linked to occurrence meeting-pattern:c2430:lab:0101:2026-09-29 (lab Tue Sep 29 14:30-16:20 @ SSC 1303). Rule \"Lab reports due ~8 days after introducing lab\" (OccurrenceRelativeDeadline): offsetDays=8, dueMode=time. Derived due 2026-10-07 23:59 America/Toronto."
+    },
+    {
+      "q": 2,
+      "answer": "Provisional/projection drops (not definitive): a:2030:q1, a:2030:q5, a:2030:q6 — incomplete quiz data",
+      "provenance": [
+        "Best 3 of 11 (incomplete snapshot): Best 3 of 11 with incomplete data (4 ungraded future(s), 1 missed without grade)",
+        "Best 3 of 11 (incomplete snapshot): Best 3 of 11 with incomplete data (4 ungraded future(s), 1 missed without grade)",
+        "Best 3 of 11 (incomplete snapshot): Best 3 of 11 with incomplete data (4 ungraded future(s), 1 missed without grade)",
+        "Missed without official grade — not treated as zero; not auto-dropped"
+      ]
+    },
+    {
+      "q": 3,
+      "answer": "Combined components earned 27.50 of 60 course points (need 30). Midterm: 40.0% of 25% weight = 10.00 course pts; Final Exam: 50.0% of 35% weight = 17.50 course pts. Threshold FAILED → cap at 45 if raw > 45, else keep raw.",
+      "provenance": {
+        "earned": 27.5,
+        "applies": true,
+        "cappedTo": 45,
+        "courseStanding": 45
+      }
+    },
+    {
+      "q": 4,
+      "answer": "CIS*2520 Lab 4 due 2026-11-11 12:20 EST for registered lab section 0104",
+      "provenance": "Assessment \"Lab 4\" linked to occurrence meeting-pattern:c2520:lab:0104:2026-11-11 (lab Wed Nov 11 10:30-12:20 @ MCKN 311). Rule \"Lab 4 due at end of lab\" (OccurrenceRelativeDeadline): offsetDays=0, dueMode=end_of_occurrence. Derived due 2026-11-11 12:20 America/Toronto."
+    },
+    {
+      "q": 5,
+      "answer": "Counting: Zybook Q1, Zybook Q2, Zybook Q3, Zybook Q4, Zybook Q5; dropped: a:2520:zy6",
+      "provenance": "ExternalActivity Best 5 of 6 with all six graded → official drop of lowest"
+    },
+    {
+      "q": 6,
+      "answer": "A2 deadline controlled by sourceType=courselink_dropbox",
+      "provenance": {
+        "value": {
+          "certainty": "exact",
+          "iso": "2026-10-20T03:59:00.000Z"
+        },
+        "sourceType": "courselink_dropbox",
+        "sourceId": "db:a2",
+        "confidence": 0.95,
+        "retrievedAt": "2026-09-15T12:00:00.000Z"
+      }
+    },
+    {
+      "q": 7,
+      "answer": "Fixture snapshot has no prior sync — change inbox empty in this offline run",
+      "provenance": "Runtime: sync/changes.ts detectAssessmentChanges + artifact content hashes"
+    },
+    {
+      "q": 8,
+      "answer": "Unknowns: future quiz grades (2030 Q5–Q11), Lab 1/3/5 dues without occurrence rules, weights for some labs may be outline-derived",
+      "provenance": "Assessments with certainty unknown or null points"
+    },
+    {
+      "q": 9,
+      "answer": "Needs confirmation: past-due items without submission/completion confirm; external Zybooks after deadline without external state",
+      "provenance": "state.needsConfirmation flag from sync engine"
+    },
+    {
+      "q": 10,
+      "answer": "Derived (not authoritative): Lab 2 due, Lab 4 end-of-lab due, Best-N provisional drops, CombinedComponentThreshold cap projection",
+      "provenance": "deadline safety DERIVED / rule_engine provenance"
+    }
+  ]
+}

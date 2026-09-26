@@ -1,129 +1,198 @@
-﻿/**
- * ICS import — America/Toronto interpretation, UID dedupe, EXDATE support.
- * Categories UNI / STUDY / BUS from CATEGORIES or SUMMARY prefix.
+/**
+ * ICS import via ical.js (RFC5545) — America/Toronto, UID dedupe, EXDATE.
+ * Category comes from import context first, then CATEGORIES, then SUMMARY prefix.
  */
-import type { CalendarEventItem } from "@/domain/types";
+import ICAL from "ical.js";
+import type { CalendarEventItem, SourceType } from "@/domain/types";
 
-function unfold(raw: string): string[] {
-  const lines = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  const out: string[] = [];
-  for (const line of lines) {
-    if ((line.startsWith(" ") || line.startsWith("\t")) && out.length) {
-      out[out.length - 1] += line.slice(1);
-    } else {
-      out.push(line);
-    }
-  }
-  return out;
-}
+export type IcsImportContext = {
+  defaultCategory?: CalendarEventItem["category"];
+  courseId?: string | null;
+  sourceType?: SourceType;
+};
 
-function parseProps(block: string[]): Record<string, string[]> {
-  const props: Record<string, string[]> = {};
-  for (const line of block) {
-    const idx = line.indexOf(":");
-    if (idx < 0) continue;
-    const keyPart = line.slice(0, idx);
-    const value = line.slice(idx + 1);
-    const key = keyPart.split(";")[0].toUpperCase();
-    (props[key] ??= []).push(value);
-  }
-  return props;
-}
+type IcalTime = {
+  isDate: boolean;
+  year: number;
+  month: number;
+  day: number;
+  toJSDate(): Date;
+};
 
-function icsDateToIso(raw: string, tzHint = "America/Toronto"): { iso: string; allDay: boolean } {
-  const v = raw.trim();
-  if (/^\d{8}$/.test(v)) {
-    const y = v.slice(0, 4);
-    const m = v.slice(4, 6);
-    const d = v.slice(6, 8);
-    // All-day: store noon Toronto-ish as date-only label via T12:00:00
-    return { iso: `${y}-${m}-${d}T12:00:00`, allDay: true };
-  }
-  const m = v.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/);
-  if (m) {
-    if (m[7] === "Z") {
-      return {
-        iso: new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`).toISOString(),
-        allDay: false,
-      };
-    }
-    // Floating local — treat as America/Toronto wall time by appending offset approx via Date
-    // Store as ISO with explicit components; consumers display in Toronto.
-    const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`;
-    void tzHint;
-    return { iso: new Date(iso).toISOString(), allDay: false };
-  }
-  return { iso: new Date().toISOString(), allDay: false };
-}
+type IcalEventLike = {
+  uid: string;
+  summary: string | null;
+  location: string | null;
+  description: string | null;
+  startDate: IcalTime | null;
+  endDate: IcalTime | null;
+  component: {
+    getAllProperties(name: string): Array<{ getFirstValue(): unknown }>;
+    getFirstProperty(name: string): { getValues(): unknown[] } | null;
+  };
+};
 
-function categorize(summary: string, categories: string[]): CalendarEventItem["category"] {
-  const blob = `${summary} ${categories.join(" ")}`.toUpperCase();
-  if (/\bUNI\b|UNIVERSITY|LECTURE|LAB|EXAM|COURSE/.test(blob)) return "UNI";
-  if (/\bSTUDY\b|HOMEWORK|ASSIGNMENT/.test(blob)) return "STUDY";
-  if (/\bBUS\b|WORK|SHIFT|JOB/.test(blob)) return "BUS";
+function categorize(
+  summary: string,
+  categories: string[],
+  ctx?: IcsImportContext,
+): CalendarEventItem["category"] {
+  if (ctx?.defaultCategory) return ctx.defaultCategory;
+  const fromCat = categories.map((c) => c.toUpperCase());
+  if (fromCat.some((c) => c === "UNI" || c.includes("UNIVERSITY"))) return "UNI";
+  if (fromCat.some((c) => c === "STUDY")) return "STUDY";
+  if (fromCat.some((c) => c === "BUS")) return "BUS";
   if (summary.startsWith("[UNI]")) return "UNI";
   if (summary.startsWith("[STUDY]")) return "STUDY";
   if (summary.startsWith("[BUS]")) return "BUS";
   return "OTHER";
 }
 
-export function parseIcs(raw: string): CalendarEventItem[] {
-  const lines = unfold(raw);
-  const events: CalendarEventItem[] = [];
-  let cur: string[] | null = null;
-  for (const line of lines) {
-    if (line === "BEGIN:VEVENT") {
-      cur = [];
-      continue;
-    }
-    if (line === "END:VEVENT" && cur) {
-      const props = parseProps(cur);
-      const uid = props.UID?.[0] ?? `anon:${events.length}`;
-      const summary = (props.SUMMARY?.[0] ?? "Event").replace(/\\n/g, "\n").replace(/\\,/g, ",");
-      const dtstart = props.DTSTART?.[0];
-      if (!dtstart) {
-        cur = null;
-        continue;
+function timeFromIcal(t: IcalTime | null | undefined): { iso: string; allDay: boolean } | null {
+  if (!t) return null;
+  if (t.isDate) {
+    const y = t.year;
+    const m = String(t.month).padStart(2, "0");
+    const d = String(t.day).padStart(2, "0");
+    return { iso: `${y}-${m}-${d}T12:00:00`, allDay: true };
+  }
+  try {
+    return { iso: t.toJSDate().toISOString(), allDay: false };
+  } catch {
+    return null;
+  }
+}
+
+function exdatesFromEvent(event: IcalEventLike): string[] {
+  const out: string[] = [];
+  try {
+    for (const p of event.component.getAllProperties("exdate")) {
+      const v = p.getFirstValue() as IcalTime | null;
+      if (v && typeof v.year === "number") {
+        out.push(`${v.year}-${String(v.month).padStart(2, "0")}-${String(v.day).padStart(2, "0")}`);
       }
-      const start = icsDateToIso(dtstart);
-      const end = props.DTEND?.[0] ? icsDateToIso(props.DTEND[0]) : null;
-      const exdates = (props.EXDATE ?? []).flatMap((x) =>
-        x.split(",").map((p) => icsDateToIso(p.trim()).iso.slice(0, 10)),
-      );
-      const cats = (props.CATEGORIES ?? []).flatMap((c) => c.split(",").map((s) => s.trim()));
+    }
+  } catch {
+    /* ignore */
+  }
+  return out;
+}
+
+export function parseIcs(raw: string, ctx?: IcsImportContext): CalendarEventItem[] {
+  const events: CalendarEventItem[] = [];
+  try {
+    const jcal = ICAL.parse(raw);
+    const comp = new ICAL.Component(jcal);
+    const vevents = comp.getAllSubcomponents("vevent");
+    for (const ve of vevents) {
+      const event = new ICAL.Event(ve) as unknown as IcalEventLike;
+      const uid = event.uid || `ics:${events.length}`;
+      const summary = event.summary || "(untitled)";
+      const start = timeFromIcal(event.startDate);
+      if (!start) continue;
+      const end = timeFromIcal(event.endDate);
+      const catsProp = event.component.getFirstProperty("categories");
+      const cats: string[] = [];
+      if (catsProp) for (const v of catsProp.getValues()) cats.push(String(v));
       events.push({
         id: `ics:${uid}`,
         uid,
-        title: summary,
-        category: categorize(summary, cats),
+        title: summary.replace(/^\[(UNI|STUDY|BUS)\]\s*/i, ""),
+        category: categorize(summary, cats, ctx),
         startIso: start.iso,
         endIso: end?.iso ?? null,
         allDay: start.allDay,
-        location: props.LOCATION?.[0] ?? null,
-        description: props.DESCRIPTION?.[0]?.replace(/\\n/g, "\n") ?? null,
-        exdates,
-        courseId: null,
-        sourceType: "ics",
+        location: event.location || null,
+        description: event.description || null,
+        exdates: exdatesFromEvent(event),
+        courseId: ctx?.courseId ?? null,
+        sourceType: ctx?.sourceType ?? "ics",
       });
-      cur = null;
-      continue;
+    }
+  } catch {
+    return parseIcsFallback(raw, ctx);
+  }
+  for (const e of events) {
+    const esc = e.uid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp("UID:" + esc + "[\\s\\S]*?END:VEVENT", "i");
+    const block = raw.match(re)?.[0] ?? "";
+    for (const m of block.matchAll(/EXDATE[^:]*:(\d{8})/gi)) {
+      const d = m[1];
+      const ymd = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+      if (!e.exdates.includes(ymd)) e.exdates.push(ymd);
+    }
+  }
+  return events;
+}
+
+function parseIcsFallback(raw: string, ctx?: IcsImportContext): CalendarEventItem[] {
+  const lines = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const unfolded: string[] = [];
+  for (const line of lines) {
+    if ((line.startsWith(" ") || line.startsWith("\t")) && unfolded.length) {
+      unfolded[unfolded.length - 1] += line.slice(1);
+    } else unfolded.push(line);
+  }
+  const events: CalendarEventItem[] = [];
+  let cur: string[] | null = null;
+  for (const line of unfolded) {
+    if (line === "BEGIN:VEVENT") { cur = []; continue; }
+    if (line === "END:VEVENT" && cur) {
+      const props: Record<string, string> = {};
+      for (const l of cur) {
+        const idx = l.indexOf(":");
+        if (idx < 0) continue;
+        props[l.slice(0, idx).split(";")[0].toUpperCase()] = l.slice(idx + 1);
+      }
+      const uid = props.UID || `fb:${events.length}`;
+      const summary = props.SUMMARY || "(untitled)";
+      const dt = props.DTSTART || "";
+      let iso = new Date().toISOString();
+      let allDay = false;
+      if (/^\d{8}$/.test(dt)) {
+        iso = `${dt.slice(0, 4)}-${dt.slice(4, 6)}-${dt.slice(6, 8)}T12:00:00`;
+        allDay = true;
+      } else {
+        const m = dt.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/);
+        if (m) {
+          iso = m[7] === "Z"
+            ? new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`).toISOString()
+            : new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`).toISOString();
+        }
+      }
+      const ex: string[] = [];
+      if (props.EXDATE) {
+        const rawEx = props.EXDATE.split(",")[0];
+        if (/^\d{8}/.test(rawEx)) ex.push(`${rawEx.slice(0, 4)}-${rawEx.slice(4, 6)}-${rawEx.slice(6, 8)}`);
+      }
+      events.push({
+        id: `ics:${uid}`, uid,
+        title: summary.replace(/^\[(UNI|STUDY|BUS)\]\s*/i, ""),
+        category: categorize(summary, props.CATEGORIES ? [props.CATEGORIES] : [], ctx),
+        startIso: iso, endIso: null, allDay,
+        location: props.LOCATION || null, description: props.DESCRIPTION || null,
+        exdates: ex, courseId: ctx?.courseId ?? null, sourceType: ctx?.sourceType ?? "ics",
+      });
+      cur = null; continue;
     }
     if (cur) cur.push(line);
   }
   return events;
 }
 
-/** Merge by UID — newer import wins; preserve unread-unrelated fields. */
 export function mergeCalendarByUid(
   existing: CalendarEventItem[],
   incoming: CalendarEventItem[],
 ): CalendarEventItem[] {
-  const map = new Map(existing.map((e) => [e.uid, e]));
+  const map = new Map<string, CalendarEventItem>();
+  for (const e of existing) map.set(e.uid, e);
   for (const e of incoming) map.set(e.uid, e);
   return [...map.values()];
 }
 
-export function eventOccursOn(e: CalendarEventItem, dayKey: string): boolean {
-  if (e.exdates.includes(dayKey)) return false;
-  return e.startIso.slice(0, 10) === dayKey;
+export function eventOccursOn(event: CalendarEventItem, dayKey: string): boolean {
+  if (event.exdates.includes(dayKey)) return false;
+  const startKey = event.startIso.slice(0, 10);
+  if (event.allDay) return startKey === dayKey;
+  return startKey === dayKey || event.startIso.includes(dayKey);
 }

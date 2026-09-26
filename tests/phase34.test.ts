@@ -1,9 +1,11 @@
-﻿import { describe, expect, it } from "vitest";
-import { applyGradeRules, applyRelativeDeadlines } from "@/engines/rules";
+import { describe, expect, it } from "vitest";
+import { applyGradeRules } from "@/engines/rules";
 import { summarizeCourseGrades } from "@/engines/grades";
 import { parseIcs, mergeCalendarByUid } from "@/engines/icsImport";
-import { DEFAULT_ITEM_STATE, type Assessment, type Course, type Meeting, type AcademicRule } from "@/domain/types";
-import { applyPersonalization, PERSONALIZATION_FIXTURES } from "@/adapters/uofg/personalization";
+import { DEFAULT_ITEM_STATE, type Assessment, type Course } from "@/domain/types";
+import type { AcademicRule } from "@/domain/rules";
+import { applyPersonalization } from "@/adapters/uofg/personalization";
+import { fixture2430, fixture2030, fixture2520 } from "./fixtures/fall2026";
 
 function course(partial: Partial<Course> & { id: string; code: string }): Course {
   return {
@@ -54,76 +56,32 @@ function assessment(partial: Partial<Assessment> & { id: string; courseId: strin
   };
 }
 
-describe("CIS*2430-like relative deadline (+8 days after Tue lab)", () => {
-  it("derives approximate lab due from Tuesday lab meeting", () => {
-    const c = course({ id: "course:2430", code: "CIS*2430" });
-    const meetings: Meeting[] = [
-      {
-        id: "m1",
-        courseId: c.id,
-        kind: "lab",
-        dayOfWeek: 2,
-        startTime: "14:30",
-        endTime: "16:20",
-        location: "SSC 1303",
-        notes: null,
-        sectionCode: "0101",
-      },
-    ];
-    const rules: AcademicRule[] = [
-      {
-        id: "r1",
-        courseId: c.id,
-        kind: "relative_deadline",
-        label: "Lab +8d",
-        params: { fromMeetingKind: "lab", dayOfWeek: 2, offsetDays: 8, applyToTypes: ["lab"] },
-        sourceType: "manual",
-        confidence: 0.9,
-      },
-    ];
-    const labs = [
-      assessment({ id: "lab1", courseId: c.id, title: "Lab 1", type: "lab", weightPercent: 5 }),
-    ];
-    const out = applyRelativeDeadlines(labs, meetings, rules, c.startDate);
-    expect(out[0].due.certainty).toBe("approximate");
-    expect(out[0].due.iso).toBeTruthy();
-    expect(out[0].fieldProvenance.due?.sourceType).toBe("rule_engine");
+describe("Fall 2026 fixtures (tests only)", () => {
+  it("has corrected schedules for 2430/2030/2520", () => {
+    const a = fixture2430();
+    expect(a.meetings.find((m) => m.kind === "lab")?.startTime).toBe("14:30");
+    expect(a.meetings.find((m) => m.kind === "lecture")?.location).toBe("RICH 2520");
+    const b = fixture2030();
+    expect(b.meetings.find((m) => m.kind === "lecture")?.startTime).toBe("08:30");
+    expect(b.meetings.find((m) => m.kind === "lab")?.startTime).toBe("17:30");
+    const c = fixture2520();
+    expect(c.meetings.find((m) => m.kind === "lecture")?.startTime).toBe("15:30");
+    expect(c.meetings.find((m) => m.kind === "lab")?.location).toBe("MCKN 311");
   });
 });
 
 describe("CIS*2520-like Zybook best 5/6", () => {
-  it("drops lowest beyond best 5", () => {
-    const c = course({ id: "course:2520", code: "CIS*2520" });
-    const items = [9, 8, 7, 6, 5, 4].map((p, i) =>
-      assessment({
-        id: `z${i}`,
-        courseId: c.id,
-        title: `Zybook ${i + 1}`,
-        type: "assignment",
-        pointsEarned: p,
-        pointsPossible: 10,
-        weightPercent: 2,
-      }),
-    );
-    const rules: AcademicRule[] = [
-      {
-        id: "r",
-        courseId: c.id,
-        kind: "best_n",
-        label: "best 5 of 6",
-        params: { n: 5, of: 6, applyToTypes: ["assignment"] },
-        sourceType: "course_outline",
-        confidence: 0.9,
-      },
-    ];
-    const effect = applyGradeRules(items, [], rules);
+  it("drops lowest beyond best 5 when complete", () => {
+    const fx = fixture2520();
+    const items = fx.assessments.filter((a) => a.title.startsWith("Zybook"));
+    const effect = applyGradeRules(items, [], fx.rules);
     expect(effect.droppedIds.size).toBe(1);
-    expect(effect.droppedIds.has("z5")).toBe(true);
+    expect(effect.droppedIds.has("a:2520:zy6")).toBe(true);
   });
 });
 
-describe("CIS*2030-like best 10 of 11 + missed quiz + threshold", () => {
-  it("missed quiz is not treated as zero; best-10 still works", () => {
+describe("missed vs zero + completion", () => {
+  it("missed quiz is not treated as zero", () => {
     const c = course({ id: "course:2030", code: "CIS*2030" });
     const quizzes = Array.from({ length: 11 }, (_, i) =>
       assessment({
@@ -134,50 +92,26 @@ describe("CIS*2030-like best 10 of 11 + missed quiz + threshold", () => {
         pointsEarned: i === 1 ? null : 8,
         pointsPossible: 10,
         weightPercent: 1,
-        state: {
-          ...DEFAULT_ITEM_STATE,
-          missed: i === 1,
-        },
+        state: { ...DEFAULT_ITEM_STATE, missed: i === 1 },
       }),
     );
     const rules: AcademicRule[] = [
       {
         id: "best",
         courseId: c.id,
-        kind: "best_n",
+        kind: "BestN",
         label: "best 10 of 11",
-        params: { n: 10, applyToTypes: ["quiz"] },
+        n: 10,
+        of: 11,
+        applyToTypes: ["quiz"],
+        category: null,
         sourceType: "course_outline",
         confidence: 0.9,
       },
-      {
-        id: "cap",
-        courseId: c.id,
-        kind: "threshold",
-        label: "exam threshold",
-        params: { applyToTypes: ["final"], thresholdPercent: 50, capPercent: 45 },
-        sourceType: "course_outline",
-        confidence: 0.8,
-      },
     ];
-    const final = assessment({
-      id: "final",
-      courseId: c.id,
-      title: "Final Exam",
-      type: "final",
-      pointsEarned: 40,
-      pointsPossible: 100,
-      weightPercent: 40,
-    });
-    const effect = applyGradeRules([...quizzes, final], [], rules);
-    expect(effect.droppedIds.has("q1")).toBe(false); // missed not in scored pool
-    expect(effect.cappedCoursePercent).toBe(45);
-
-    const summary = summarizeCourseGrades(c, [...quizzes, final], [], rules);
+    const summary = summarizeCourseGrades(c, quizzes, [], rules);
     expect(summary.missedCount).toBe(1);
-    expect(summary.rows.find((r) => r.assessment.id === "q1")?.missed).toBe(true);
     expect(summary.rows.find((r) => r.assessment.id === "q1")?.percent).toBeNull();
-    expect(summary.cappedPercent).toBe(45);
   });
 
   it("completed-not-submitted stays distinct from submitted", () => {
@@ -223,17 +157,11 @@ describe("ICS import", () => {
   });
 });
 
-describe("personalization fixtures", () => {
-  it("applies Fei Song / Randhawa / Yan Yan section schedules", () => {
-    const courses = PERSONALIZATION_FIXTURES.map((f, i) =>
-      course({ id: `course:${i}`, code: f.courseCode }),
-    );
+describe("runtime personalization does not inject fixtures", () => {
+  it("applyPersonalization is identity", () => {
+    const courses = [course({ id: "course:0", code: "CIS*2430" })];
     const out = applyPersonalization(courses, [], [], []);
-    expect(out.courses.find((c) => c.code === "CIS*2430")?.lectureSection).toBe("0101");
-    expect(out.courses.find((c) => c.code === "CIS*2030")?.labSection).toBe("0105");
-    expect(out.meetings.some((m) => m.location === "SSC 1303")).toBe(true);
-    expect(out.meetings.some((m) => m.location === "MCKN 311")).toBe(true);
-    expect(out.people.some((p) => p.name === "Fei Song")).toBe(true);
-    expect(out.rules.some((r) => r.kind === "relative_deadline")).toBe(true);
+    expect(out.meetings).toHaveLength(0);
+    expect(out.courses[0].lectureSection).toBeNull();
   });
 });

@@ -1,11 +1,15 @@
-﻿import type { Assessment, Course, GradeCategory, AcademicRule, WhatIfOverride } from "@/domain/types";
-import { applyGradeRules } from "./rules";
+import type { Assessment, Course, GradeCategory, WhatIfOverride } from "@/domain/types";
+import type { AcademicRule } from "@/domain/rules";
+import { ensureTypedRule } from "@/domain/rules";
+import { applyGradeRules, type DropCertainty } from "./rules";
 
 export interface AssessmentGradeRow {
   assessment: Assessment;
   percent: number | null;
   counted: boolean;
   dropped: boolean;
+  provisionalDrop: boolean;
+  dropCertainty: DropCertainty | "none";
   missed: boolean;
 }
 
@@ -21,11 +25,11 @@ export interface CourseGradeSummary {
   missedCount: number;
   cappedPercent: number | null;
   capReason: string | null;
+  thresholdDetail: string | null;
   rows: AssessmentGradeRow[];
 }
 
 function assessmentPercent(a: Assessment): number | null {
-  // Missed ≠ zero unless user entered a score
   if (a.state?.missed && a.pointsEarned == null) return null;
   if (a.pointsEarned != null && a.pointsPossible && a.pointsPossible > 0) {
     return (a.pointsEarned / a.pointsPossible) * 100;
@@ -52,6 +56,21 @@ function withWhatIf(a: Assessment, overrides: WhatIfOverride[]): Assessment {
   };
 }
 
+function rawWeightedPercent(rows: AssessmentGradeRow[]): number | null {
+  let weightedSum = 0;
+  let completedWeight = 0;
+  for (const row of rows) {
+    const w = row.assessment.weightPercent;
+    if (w == null) continue;
+    if (row.dropped) continue;
+    if (row.counted && row.percent != null) {
+      weightedSum += row.percent * w;
+      completedWeight += w;
+    }
+  }
+  return completedWeight > 0 ? weightedSum / completedWeight : null;
+}
+
 export function summarizeCourseGrades(
   course: Course,
   assessments: Assessment[],
@@ -63,21 +82,44 @@ export function summarizeCourseGrades(
     .filter((a) => a.courseId === course.id && !a.isBonus)
     .map((a) => withWhatIf(a, whatIf));
 
+  const typedRules = rules.map(ensureTypedRule);
+
+  // First pass without cap to get raw standing for CombinedComponentThreshold
+  const preliminaryRows: AssessmentGradeRow[] = items.map((a) => {
+    const percent = assessmentPercent(a);
+    const missed = !!a.state?.missed;
+    return {
+      assessment: a,
+      percent,
+      counted: percent != null && !missed && a.weightPercent != null,
+      dropped: !!a.state?.dropped,
+      provisionalDrop: false,
+      dropCertainty: "none" as const,
+      missed,
+    };
+  });
+  const raw = rawWeightedPercent(preliminaryRows);
+
   const effect = applyGradeRules(
     items,
     categories.filter((c) => c.courseId === course.id),
-    rules.filter((r) => !r.courseId || r.courseId === course.id),
+    typedRules,
+    raw,
   );
 
   const rows: AssessmentGradeRow[] = items.map((a) => {
     const percent = assessmentPercent(a);
     const isDropped = effect.droppedIds.has(a.id) || !!a.state?.dropped;
+    const provisionalDrop = effect.provisionalDroppedIds.has(a.id);
     const missed = !!a.state?.missed;
+    const dropCertainty = effect.dropCertainty.get(a.id) ?? "none";
     return {
       assessment: a,
       percent,
       counted: percent != null && !isDropped && !missed && a.weightPercent != null,
       dropped: isDropped,
+      provisionalDrop,
+      dropCertainty,
       missed,
     };
   });
@@ -89,7 +131,6 @@ export function summarizeCourseGrades(
   for (const row of rows) {
     const w = row.assessment.weightPercent;
     if (w == null) continue;
-    // Dropped items remove their weight from both completed and remaining pools for best-N
     if (row.dropped) continue;
     totalKnownWeight += w;
     if (row.counted && row.percent != null) {
@@ -106,6 +147,30 @@ export function summarizeCourseGrades(
     calculatedPercent > effect.cappedCoursePercent
   ) {
     calculatedPercent = effect.cappedCoursePercent;
+  } else if (
+    calculatedPercent == null &&
+    effect.cappedCoursePercent != null &&
+    effect.capReason
+  ) {
+    // Cap applies to final course grade once raw known; keep null if no standing yet
+  }
+
+  // Re-apply combined threshold against actual calculated standing
+  if (calculatedPercent != null) {
+    const effect2 = applyGradeRules(
+      items,
+      categories.filter((c) => c.courseId === course.id),
+      typedRules,
+      calculatedPercent,
+    );
+    if (effect2.thresholdDetail) effect.thresholdDetail = effect2.thresholdDetail;
+    if (effect2.cappedCoursePercent != null) {
+      effect.cappedCoursePercent = effect2.cappedCoursePercent;
+      effect.capReason = effect2.capReason;
+      if (calculatedPercent > effect2.cappedCoursePercent) {
+        calculatedPercent = effect2.cappedCoursePercent;
+      }
+    }
   }
 
   return {
@@ -120,6 +185,7 @@ export function summarizeCourseGrades(
     missedCount: rows.filter((r) => r.missed).length,
     cappedPercent: effect.cappedCoursePercent,
     capReason: effect.capReason,
+    thresholdDetail: effect.thresholdDetail,
     rows,
   };
 }
@@ -149,7 +215,6 @@ export function requiredFinalExamScore(
   return (targetPercent * totalWeight - otherWeightContribution) / finalWeight;
 }
 
-/** What-if: copy overrides and re-summarize without mutating persisted data. */
 export function whatIfSummary(
   course: Course,
   assessments: Assessment[],
