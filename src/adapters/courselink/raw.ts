@@ -107,6 +107,7 @@ export interface RawContentTopic {
   IsLocked?: boolean;
   IsBroken?: boolean;
   LastModifiedDate?: string | null;
+  DueDate?: string | null;
   Description?: { Text?: string | null; Html?: string | null } | null;
 }
 

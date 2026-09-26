@@ -224,6 +224,31 @@ export interface ImportedDocument {
   parseError: string | null;
 }
 
+export interface OutlineAssessmentParsed {
+  title: string;
+  type: AssessmentType;
+  weightPercent: number | null;
+  dueLabel: string | null;
+  dueIso: string | null;
+  certainty: DateCertainty;
+  confidence: number;
+  category: string | null;
+  sourceSnippet: string | null;
+}
+
+export interface OutlineGradingRule {
+  kind: "best_n" | "drop_lowest" | "other";
+  label: string;
+  n: number | null;
+  category: string | null;
+}
+
+export interface OutlineParseDiagnostic {
+  pass: string;
+  message: string;
+  snippet?: string;
+}
+
 export interface OutlineParseResult {
   courseCode: string | null;
   courseTitle: string | null;
@@ -232,17 +257,17 @@ export interface OutlineParseResult {
   tas: Array<{ name: string; email: string | null }>;
   officeHours: string[];
   scheduleLines: string[];
-  assessments: Array<{
-    title: string;
-    type: AssessmentType;
+  assessments: OutlineAssessmentParsed[];
+  categories: Array<{
+    name: string;
     weightPercent: number | null;
-    dueLabel: string | null;
-    dueIso: string | null;
-    certainty: DateCertainty;
-    confidence: number;
+    dropLowest: number;
+    bestN: number | null;
   }>;
+  gradingRules: OutlineGradingRule[];
   policies: Array<{ kind: CoursePolicy["kind"]; title: string; body: string }>;
   textbooks: string[];
+  diagnostics: OutlineParseDiagnostic[];
   confidence: number;
 }
 

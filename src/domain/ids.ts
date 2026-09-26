@@ -18,6 +18,11 @@ export function conflictId(entityId: string, field: string): string {
 export function normalizeTitleKey(title: string): string {
   return title
     .toLowerCase()
+    .replace(/\bassign(?:ment)?s?\b/g, "assignment")
+    .replace(/\bhw\b|\bhomework\b/g, "assignment")
+    .replace(/\ba\s*#?\s*(\d+)\b/g, "assignment $1")
+    .replace(/\bq\s*#?\s*(\d+)\b/g, "quiz $1")
+    .replace(/#\s*(\d+)\b/g, "$1")
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();

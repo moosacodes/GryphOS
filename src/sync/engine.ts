@@ -6,6 +6,7 @@ import {
   HttpError,
   SignedOutError,
   getCalendarEvents,
+  getContentToc,
   getCourses,
   getFolders,
   getGradeObjects,
@@ -16,8 +17,11 @@ import {
   getVersions,
   getWhoAmI,
 } from "@/adapters/courselink/api";
+import { assessmentId } from "@/domain/ids";
+import { exactDate, unknownDate } from "@/domain/dates";
 import {
   discoverCourseOutline,
+  flattenContentTopics,
   type OutlineDiscoveryHit,
 } from "@/adapters/courselink/discoverOutlines";
 import { seedAcademicDates } from "@/adapters/uofg/academicDates";
@@ -32,6 +36,7 @@ import type {
 } from "@/domain/types";
 import {
   announcementFromNews,
+  assessmentsFromAnnouncement,
   applyGrades,
   assessmentFromCalendarEvent,
   fromFolder,
@@ -116,6 +121,63 @@ async function syncCourse(course: Course, le: string): Promise<{
   for (const e of events ?? []) {
     const a = assessmentFromCalendarEvent(e, course);
     if (a) rawAssessments.push(a);
+  }
+
+
+  for (const n of news ?? []) {
+    rawAssessments.push(...assessmentsFromAnnouncement(n, course));
+  }
+
+  const tocModules = await safe(getContentToc(le, course.orgUnitId));
+  if (tocModules?.length) {
+    for (const t of flattenContentTopics(tocModules)) {
+      if (!t.dueDate) continue;
+      if (!/\b(assignment|quiz|lab|project|mid[- ]?term|final|exam|homework|hw|test)\b/i.test(t.title)) {
+        continue;
+      }
+      const id = assessmentId(course.id, "content", String(t.id ?? t.title));
+      const due = exactDate(t.dueDate);
+      rawAssessments.push({
+        id,
+        courseId: course.id,
+        title: t.title,
+        type: /final/i.test(t.title)
+          ? "final"
+          : /mid[- ]?term/i.test(t.title)
+            ? "midterm"
+            : /quiz|test/i.test(t.title)
+              ? "quiz"
+              : /lab/i.test(t.title)
+                ? "lab"
+                : "assignment",
+        due,
+        start: unknownDate(),
+        end: unknownDate(),
+        weightPercent: null,
+        pointsPossible: null,
+        pointsEarned: null,
+        submissionState: "unknown",
+        submittedAt: null,
+        gradeDisplay: null,
+        url: t.url,
+        notes: null,
+        categoryId: null,
+        isBonus: false,
+        sourceRecords: [],
+        fieldProvenance: {
+          due: {
+            value: due,
+            sourceType: "courselink_content",
+            sourceId: String(t.id ?? t.title),
+            confidence: 0.7,
+            retrievedAt: new Date().toISOString(),
+          },
+        },
+        conflictIds: [],
+        manualOverrides: {},
+        updatedAt: new Date().toISOString(),
+      });
+    }
   }
 
   let items = rawAssessments.filter((a) => inWindow(a));

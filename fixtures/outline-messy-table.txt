@@ -1,0 +1,39 @@
+University of Guelph
+College of Engineering and Physical Sciences
+CIS*2520 — Data Structures
+Fall 2026
+
+Instructor: Dr. Jane Example
+Email: jexample@uoguelph.ca
+Office Hours:
+Tuesday 14:00-15:00 (Reynolds 222)
+
+Teaching Assistants
+Alex Helper - ahelper@uoguelph.ca
+Sam Tutor - stutor@uoguelph.ca
+
+Lecture Schedule
+Mon/Wed 10:00-11:20 MCKN 120
+
+Methods of Evaluation
+Assessment          Weight     Due Date
+Assignment 1          10%      Week 3
+Assignment 2          10%      Week 6
+Assignment 3          10%      Week 9
+Quizzes (best 5 of 7) 15%
+Labs                  10%      weekly
+Midterm               20%      October 20, 2026
+Final Exam            25%      Exam period
+
+Note: The lowest quiz is dropped. Best 5 of 7 quizzes count.
+
+Late Policy
+Late submissions lose 10% per day up to 3 days. After 3 days, a grade of 0 is assigned.
+
+Academic Integrity
+Students are expected to follow the University academic misconduct policy.
+
+Textbook
+Goodrich, Tamassia — Data Structures & Algorithms in Java
+
+CIS*2520 — Data Structures — Page 1 of 2

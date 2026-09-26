@@ -1,4 +1,5 @@
 import { COURSELINK_ORIGIN } from "@/domain/constants";
+import { parseDateLabel } from "@/adapters/outline/parse";
 import { assessmentId, normalizeTitleKey, sourceRecordId } from "@/domain/ids";
 import { exactDate, unknownDate } from "@/domain/dates";
 import type {
@@ -220,6 +221,66 @@ export function applyGrades(
       updatedAt: nowIso(),
     };
   });
+}
+
+/** Pull deadline phrases from news into assessments (never invent dates). */
+export function assessmentsFromAnnouncement(
+  n: RawNewsItem,
+  course: Course,
+): Assessment[] {
+  if (n.IsHidden) return [];
+  const body = `${n.Title ?? ""} ${n.Body?.Text ?? ""} ${(n.Body?.Html ?? "").replace(/<[^>]+>/g, " ")}`;
+  const plain = body.replace(/\s+/g, " ").trim();
+  const out: Assessment[] = [];
+  const re =
+    /\b((?:assignment|quiz|lab|project|mid[- ]?term|final(?:\s+exam)?|homework|hw)\s*#?\s*\d*|a\s*\d+|q\s*\d+)\b[^.!?]{0,60}?\b(?:due|deadline)\b[:\s]+([^.!?]{3,60})/gi;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(plain)) && i < 5) {
+    const title = m[1].replace(/\s+/g, " ").trim();
+    const dueRaw = m[2].trim();
+    const parsed = parseDateLabel(dueRaw);
+    const due = {
+      certainty: parsed.certainty,
+      iso: parsed.iso,
+      label: parsed.label || dueRaw.slice(0, 80),
+    };
+    const id = assessmentId(course.id, "news", `${n.Id}:${i}`);
+    out.push(
+      baseAssessment(
+        {
+          id,
+          courseId: course.id,
+          title,
+          type: inferType(title, "other"),
+          due,
+          start: unknownDate(),
+          end: unknownDate(),
+          weightPercent: null,
+          pointsPossible: null,
+          pointsEarned: null,
+          submissionState: "unknown",
+          submittedAt: null,
+          gradeDisplay: null,
+          url: `${COURSELINK_ORIGIN}/d2l/le/news/${course.orgUnitId}/${n.Id}/view`,
+          notes: `From announcement: ${n.Title}`,
+          categoryId: null,
+          isBonus: false,
+        },
+        {
+          due: {
+            value: due,
+            sourceType: "courselink_news",
+            sourceId: String(n.Id),
+            confidence: 0.55,
+            retrievedAt: nowIso(),
+          },
+        },
+      ),
+    );
+    i += 1;
+  }
+  return out;
 }
 
 export function announcementFromNews(n: RawNewsItem, course: Course): Announcement | null {

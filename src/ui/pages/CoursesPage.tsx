@@ -40,7 +40,7 @@ export function CoursesPage({ data }: { data: AppData }) {
                 </div>
               </div>
               <p className="small" style={{ marginTop: "0.75rem" }}>
-                {count} assessments Â· {healthStatusLabel(health.status)} ({health.score}%)
+                {count} assessments · {healthStatusLabel(health.status)} ({health.score}%)
               </p>
             </Link>
           );

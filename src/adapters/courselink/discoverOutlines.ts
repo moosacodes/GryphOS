@@ -11,7 +11,7 @@
  * - News posts mentioning outline/grading (text only)
  */
 import { parseOutlineText } from "@/adapters/outline/parse";
-import { extractPdfText } from "@/adapters/outline/pdf";
+import { extractPdfDocument, extractPdfText } from "@/adapters/outline/pdf";
 import { COURSELINK_ORIGIN } from "@/domain/constants";
 import type {
   Course,
@@ -45,12 +45,13 @@ export interface OutlineDiscoveryHit {
   candidatesTried: number;
 }
 
-interface FlatTopic {
+export interface FlatTopic {
   title: string;
   url: string | null;
   id: number | null;
   parentTitle: string | null;
   isFileLike: boolean;
+  dueDate: string | null;
 }
 
 function topicId(t: RawContentTopic): number | null {
@@ -101,6 +102,7 @@ export function flattenContentTopics(modules: RawContentModule[]): FlatTopic[] {
           id: topicId(t),
           parentTitle: modTitle ?? null,
           isFileLike: isFileLike(t),
+          dueDate: t.DueDate ?? null,
         });
       }
       if (m.Modules?.length) walk(m.Modules, modTitle ?? parentTitle);
@@ -114,6 +116,7 @@ export function flattenContentTopics(modules: RawContentModule[]): FlatTopic[] {
             id: topicId(t),
             parentTitle: modTitle ?? parentTitle,
             isFileLike: isFileLike(t),
+            dueDate: t.DueDate ?? null,
           });
         } else {
           walk([node as RawContentModule], modTitle ?? parentTitle);
@@ -147,6 +150,15 @@ export function scoreOutlineCandidate(
     score -= 25;
   }
   if (/\b(rubric|solution|answer\s*key|sample)\b/i.test(hay)) score -= 20;
+  // CIS*2520-F26.pdf / CIS2520_F26 style filenames
+  const courseCodeTerm =
+    /\b[a-z]{2,5}\s*[*_-]?\s*\d{4}\s*[-_]?\s*(f|w|s|fall|winter|summer)?\s*[-_]?\s*\d{2,4}\b/i.test(hay) ||
+    /\b[a-z]{2,5}\d{4}[-_][fws]\d{2}\b/i.test(hay);
+  if (courseCodeTerm && FILE_EXT.test(hay)) score += 28;
+  if (courseCodeTerm && parentTitle && WEAK_OUTLINE.test(parentTitle)) score += 15;
+  if (parentTitle && OUTLINE_NAME.test(parentTitle) && /lecture|week\s*\d/.test(hay)) {
+    score += 15;
+  }
   return score;
 }
 
@@ -158,9 +170,14 @@ async function materializeText(
   const lower = `${contentType} ${filename}`.toLowerCase();
   if (lower.includes("pdf") || filename.toLowerCase().endsWith(".pdf")) {
     try {
-      return await extractPdfText(buffer);
+      const doc = await extractPdfDocument(buffer);
+      return doc.text;
     } catch {
-      return null;
+      try {
+        return await extractPdfText(buffer);
+      } catch {
+        return null;
+      }
     }
   }
   if (

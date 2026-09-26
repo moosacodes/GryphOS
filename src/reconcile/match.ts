@@ -26,9 +26,32 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 }
 
 function numberHint(title: string): string | null {
-  const m = title.match(/\b(?:assignment|quiz|lab|project|a|q|l|p)\s*#?\s*(\d+)\b/i)
-    ?? title.match(/\b(\d+)\b/);
-  return m ? m[1] : null;
+  const m =
+    title.match(/\b(?:assignment|quiz|lab|project|homework|hw)\s*#?\s*(\d+)\b/i) ??
+    title.match(/\b([aqhlp])\s*#?\s*(\d+)\b/i) ??
+    title.match(/#\s*(\d+)\b/) ??
+    title.match(/\b(\d+)\b/);
+  if (!m) return null;
+  return m[2] ?? m[1];
+}
+
+/** Expand A1 / Assignment #1 / Assign 1 into shared tokens. */
+function canonicalTitleTokens(title: string): Set<string> {
+  let t = title.toLowerCase();
+  t = t.replace(/\bassignments?\b/g, "assignment");
+  t = t.replace(/\bassign\.?\b/g, "assignment");
+  t = t.replace(/\bhomework\b|\bhw\b/g, "assignment");
+  t = t.replace(/\bquizzes\b/g, "quiz");
+  t = t.replace(/\blaborator(?:y|ies)\b/g, "lab");
+  t = t.replace(/\bmid[\s-]?terms?\b/g, "midterm");
+  t = t.replace(/\bfinal\s+exams?\b|\bfinal\s+examinations?\b/g, "final");
+  // A1 / Q2 / L3 / P4
+  t = t.replace(/\ba\s*#?\s*(\d+)\b/g, "assignment $1");
+  t = t.replace(/\bq\s*#?\s*(\d+)\b/g, "quiz $1");
+  t = t.replace(/\bl\s*#?\s*(\d+)\b/g, "lab $1");
+  t = t.replace(/\bp\s*#?\s*(\d+)\b/g, "project $1");
+  t = t.replace(/#\s*(\d+)\b/g, "$1");
+  return new Set(t.replace(/[^a-z0-9]+/g, " ").split(" ").filter((x) => x.length > 0));
 }
 
 /** Conservative match score 0..1. Prefer false negative over false positive. */
@@ -43,7 +66,10 @@ export function matchScore(a: Assessment, b: Assessment): number {
   const compat = TYPE_COMPAT[a.type] ?? ["other"];
   if (!compat.includes(b.type) && a.type !== b.type) return 0;
 
-  let score = jaccard(tokenSet(a.title), tokenSet(b.title));
+  let score = Math.max(
+    jaccard(tokenSet(a.title), tokenSet(b.title)),
+    jaccard(canonicalTitleTokens(a.title), canonicalTitleTokens(b.title)),
+  );
   const na = numberHint(a.title);
   const nb = numberHint(b.title);
   if (na && nb) {

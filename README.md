@@ -18,7 +18,7 @@ terminal; leave it closed.
 ## Features
 
 - **In-page CourseLink panel** — primary day-to-day UI is a side panel on the CourseLink site (toolbar popup opens/toggles it)
-- **Auto outline discovery** during sync from course content modules/files when Brightspace allows (manual Documents import is fallback only)
+- **Auto outline discovery** during sync (content TOC/Structure, overview, news) when Brightspace allows; positional PDF parsing for tables/weights; manual Documents import is the fallback
 - CourseLink sync via your signed-in browser session (no passwords)
 - Canonical academic data model with provenance and conflict detection
 - Deterministic grade engine (standing, remaining weight, target calculator)
@@ -103,7 +103,8 @@ See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
 - Live CourseLink behaviour requires a real signed-in UofG session **in the same browser**
 - Some Brightspace tools/content return 403/404 per course; sync continues; missing outlines stay unknown
-- Auto outline discovery depends on content TOC + downloadable file topics (PDF/text/HTML)
+- Auto outline discovery depends on content TOC/Structure + downloadable files (PDF/text/HTML). Brightspace may 403 file downloads even when Content UI works ? status shows `blocked` and Documents import remains available.
+- Outline parsing is heuristic: complex multi-column scanned PDFs and DOCX are limited; Week N dates stay approximate
 - Final exam dates are often absent from CourseLink unless outline/calendar provides them
 - Opera GX must allow installing Chromium/unpacked extensions
 - Not built for Firefox or Safari

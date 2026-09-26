@@ -1,0 +1,13 @@
+STAT*2040 Statistics I
+Fall 2026
+Instructor: Dr. Pat Chen
+
+Evaluation
+Assessment | Weight | Due
+Homework | 15% | weekly
+Labs (best 8 of 10) | 15% | —
+Midterm 1 | 20% | Oct 8
+Midterm 2 | 20% | Nov 12
+Final Exam | 30% | Exam period
+
+Drop the lowest 2 lab scores.

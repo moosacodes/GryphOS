@@ -2,6 +2,7 @@ import type {
   AppData,
   Assessment,
   CoursePolicy,
+  GradeCategory,
   ImportedDocument,
   Person,
   Resource,
@@ -86,8 +87,8 @@ export function applyOutlineDocument(
     submittedAt: null,
     gradeDisplay: null,
     url: null,
-    notes: null,
-    categoryId: null,
+    notes: oa.sourceSnippet ?? null,
+    categoryId: oa.category ? `gcat:${courseId}:${oa.category}` : null,
     isBonus: false,
     sourceRecords: [],
     fieldProvenance: {
@@ -139,6 +140,18 @@ export function applyOutlineDocument(
     })),
   ];
 
+  const gradeCategories: GradeCategory[] = [
+    ...data.gradeCategories.filter((g) => g.courseId !== courseId),
+    ...(result.categories ?? []).map((c, i) => ({
+      id: `gcat:${courseId}:${i}`,
+      courseId,
+      name: c.name,
+      weightPercent: c.weightPercent,
+      dropLowest: c.dropLowest,
+      bestN: c.bestN,
+    })),
+  ];
+
   const documents = [
     ...data.documents.filter(
       (d) => !(d.courseId === courseId && (d.id.startsWith("auto:") || d.id === doc.id)),
@@ -158,5 +171,6 @@ export function applyOutlineDocument(
     people,
     policies,
     resources,
+    gradeCategories,
   };
 }

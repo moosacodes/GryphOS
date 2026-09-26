@@ -41,7 +41,7 @@ export function CourseDetailPage({ data }: { data: AppData }) {
             <span className="dot" style={{ display: "inline-block", background: course.color, marginRight: 8 }} />
             {course.code}
           </h1>
-          <p>{course.title}{course.semester ? ` Â· ${course.semester}` : ""}</p>
+          <p>{course.title}{course.semester ? ` · ${course.semester}` : ""}</p>
         </div>
         <a className="btn" href={course.url} target="_blank" rel="noreferrer">CourseLink</a>
       </div>
@@ -58,7 +58,7 @@ export function CourseDetailPage({ data }: { data: AppData }) {
           <p className="small muted">
             Calculated grade:{" "}
             {grades.calculatedPercent != null ? `${grades.calculatedPercent.toFixed(1)}%` : "Not enough data"}
-            {" Â· "}completed weight {grades.completedWeight.toFixed(0)}%
+            {" · "}completed weight {grades.completedWeight.toFixed(0)}%
           </p>
         </div>
 
@@ -70,7 +70,7 @@ export function CourseDetailPage({ data }: { data: AppData }) {
             <ul className="small">
               {course.instructorNames.map((n) => <li key={n}>{n} (instructor)</li>)}
               {people.map((p) => (
-                <li key={p.id}>{p.name} ({p.role}){p.email ? ` Â· ${p.email}` : ""}</li>
+                <li key={p.id}>{p.name} ({p.role}){p.email ? ` · ${p.email}` : ""}</li>
               ))}
             </ul>
           )}
@@ -78,7 +78,22 @@ export function CourseDetailPage({ data }: { data: AppData }) {
           {meetings.length === 0 ? (
             <p className="muted small">No schedule detected.</p>
           ) : (
-            <ul className="small">{meetings.map((m) => <li key={m.id}>{m.kind}: {m.notes ?? m.location ?? "â€”"}</li>)}</ul>
+            <ul className="small">{meetings.map((m) => <li key={m.id}>{m.kind}: {m.notes ?? m.location ?? "—"}</li>)}</ul>
+          )}
+        </div>
+
+        <div className="card" style={{ gridColumn: "1 / -1" }}>
+          <h2>Major exams</h2>
+          {assessments.filter((a) => a.type === "midterm" || a.type === "final").length === 0 ? (
+            <p className="muted small">No midterm/final detected yet. Sync or import an outline.</p>
+          ) : (
+            <div className="list">
+              {assessments
+                .filter((a) => a.type === "midterm" || a.type === "final")
+                .map((a) => (
+                  <AssessmentRow key={a.id} assessment={a} course={course} />
+                ))}
+            </div>
           )}
         </div>
 
@@ -105,7 +120,7 @@ export function CourseDetailPage({ data }: { data: AppData }) {
           ) : (
             <>
               <ul className="small">{resources.map((r) => <li key={r.id}>{r.title}</li>)}</ul>
-              <ul className="small">{policies.map((p) => <li key={p.id}><strong>{p.title}</strong>: {p.body.slice(0, 160)}â€¦</li>)}</ul>
+              <ul className="small">{policies.map((p) => <li key={p.id}><strong>{p.title}</strong>: {p.body.slice(0, 160)}...</li>)}</ul>
             </>
           )}
         </div>

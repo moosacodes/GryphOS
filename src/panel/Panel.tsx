@@ -12,8 +12,8 @@ import { formatInToronto } from "@/domain/dates";
 
 function syncCopy(data: AppData) {
   const status = effectiveStatus(data.sync);
-  if (status === "syncing") return { label: "Syncing CourseLinkâ€¦", tone: "warn" as const };
-  if (status === "signed_out") return { label: "Signed out â€” sign in on CourseLink", tone: "danger" as const };
+  if (status === "syncing") return { label: "Syncing CourseLink...", tone: "warn" as const };
+  if (status === "signed_out") return { label: "Signed out — sign in on CourseLink", tone: "danger" as const };
   if (status === "error") return { label: data.sync.message ?? "Sync error", tone: "danger" as const };
   if (!data.sync.lastSyncedAt) return { label: "Not synced yet", tone: "muted" as const };
   const mins = Math.round((Date.now() - data.sync.lastSyncedAt) / 60000);
@@ -45,9 +45,9 @@ function DeadlineCard({
         </div>
         <div className="small muted">
           {code ?? "Course"}
-          {a.weightPercent != null ? ` Â· ${a.weightPercent}%` : ""}
-          {a.due.iso ? ` Â· ${formatInToronto(a.due.iso, "EEE MMM d, h:mm a")}` : a.due.label ? ` Â· ${a.due.label}` : " Â· date unknown"}
-          {a.due.certainty === "conflicting" ? " Â· conflict" : a.due.certainty === "approximate" ? " Â· approx" : ""}
+          {a.weightPercent != null ? ` · ${a.weightPercent}%` : ""}
+          {a.due.iso ? ` · ${formatInToronto(a.due.iso, "EEE MMM d, h:mm a")}` : a.due.label ? ` · ${a.due.label}` : " · date unknown"}
+          {a.due.certainty === "conflicting" ? " · conflict" : a.due.certainty === "approximate" ? " · approx" : ""}
         </div>
         {a.fieldProvenance.due && (
           <div className="prov-line">Source: {a.fieldProvenance.due.sourceType.replace(/_/g, " ")}</div>
@@ -136,7 +136,7 @@ export function Panel() {
           <div className="skeleton-line w60" />
           <div className="skeleton-line w40" />
           <div className="skeleton-card" />
-          <p className="muted small">Loading gryphOSâ€¦</p>
+          <p className="muted small">Loading gryphOS...</p>
         </div>
       </div>
     );
@@ -147,10 +147,10 @@ export function Panel() {
       <header className="panel-top">
         <div>
           <div className="panel-brand">gryph<span>OS</span></div>
-          <div className={`sync-pill sync-${sync.tone}`}>{syncing || status === "syncing" ? "Syncingâ€¦" : sync.label}</div>
+          <div className={`sync-pill sync-${sync.tone}`}>{syncing || status === "syncing" ? "Syncing..." : sync.label}</div>
         </div>
         <button type="button" className="btn btn-primary btn-sm" disabled={syncing || status === "syncing"} onClick={onSync}>
-          {syncing || status === "syncing" ? "â€¦" : "Sync"}
+          {syncing || status === "syncing" ? "..." : "Sync"}
         </button>
       </header>
 
@@ -212,7 +212,7 @@ export function Panel() {
       {workload.overdue.length > 0 && (
         <div className="callout callout-danger tight">
           <strong>{workload.overdue.length} overdue</strong>
-          <span className="small"> â€” unsubmitted past due</span>
+          <span className="small"> — unsubmitted past due</span>
         </div>
       )}
 
@@ -229,7 +229,7 @@ export function Panel() {
         <h2>Queue</h2>
         <div className="panel-list">
           {upcoming.length === 0 ? (
-            <div className="empty-mini">{courses.length ? "Clear queue â€” nothing due soon." : "Sync to load your semester."}</div>
+            <div className="empty-mini">{courses.length ? "Clear queue — nothing due soon." : "Sync to load your semester."}</div>
           ) : (
             upcoming.map((a) => (
               <DeadlineCard
@@ -256,7 +256,7 @@ export function Panel() {
                   <div>
                     <strong>{c?.code}</strong>{" "}
                     <span className="badge badge-warn">{healthStatusLabel(h.status)}</span>
-                    <div className="small muted">{warn.map((w) => w.label).join(" Â· ") || `${h.score}% complete`}</div>
+                    <div className="small muted">{warn.map((w) => w.label).join(" · ") || `${h.score}% complete`}</div>
                   </div>
                 </div>
               );
