@@ -45,7 +45,7 @@ export function Dashboard({ data }: { data: AppData }) {
         </div>
         <EmptyState
           title="Not synced yet"
-          body="Open CourseLink while signed in, then sync. gryphOS uses your existing browser session — no passwords."
+          body="Open CourseLink while signed in, then sync. gryphOS uses your existing browser session — no passwords. Once loaded from dist/, it runs entirely in Chrome with no terminal."
           action={
             <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", marginTop: "0.75rem" }}>
               <button type="button" className="btn btn-primary" onClick={() => void openCourseLink(true)}>

@@ -3,10 +3,23 @@ import type { AppData } from "@/domain/types";
 import { emptyAppData } from "@/storage/schema";
 import { loadAppData, subscribe } from "@/storage/repository";
 import { classifyTaskStatus } from "@/engines/status";
-import { openApp, requestSync } from "@/shared/actions";
+import { openApp, openCourseLink, requestSync } from "@/shared/actions";
 import { effectiveStatus } from "@/storage/chromeStore";
 import { useTheme } from "@/ui/hooks/useTheme";
 import "@/ui/styles/global.css";
+
+function syncLabel(status: ReturnType<typeof effectiveStatus>, lastSyncedAt: number | null): string {
+  switch (status) {
+    case "syncing":
+      return "Syncing…";
+    case "signed_out":
+      return "Signed out of CourseLink";
+    case "error":
+      return "Sync error";
+    default:
+      return lastSyncedAt ? "Synced" : "Not synced yet";
+  }
+}
 
 export function Popup() {
   const [data, setData] = useState<AppData>(emptyAppData());
@@ -33,15 +46,44 @@ export function Popup() {
     .filter((a) => a.due.iso && Date.parse(a.due.iso) >= Date.now() && a.submissionState !== "submitted")
     .sort((a, b) => Date.parse(a.due.iso!) - Date.parse(b.due.iso!))[0];
   const status = effectiveStatus(data.sync);
+  const firstRun = !data.sync.lastSyncedAt && data.courses.length === 0;
 
   return (
     <div style={{ width: 340, padding: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <strong>gryph<span style={{ color: "var(--accent)" }}>OS</span></strong>
-        <span className="badge">{status}</span>
+        <span className={status === "signed_out" || status === "error" ? "badge badge-warn" : "badge"}>
+          {syncLabel(status, data.sync.lastSyncedAt)}
+        </span>
       </div>
 
-      {overdue.length > 0 && (
+      {firstRun && (
+        <div className="card" style={{ marginBottom: 8, padding: "0.65rem", background: "var(--bg-muted)" }}>
+          <div className="small" style={{ fontWeight: 600 }}>Runs entirely in Chrome</div>
+          <div className="small muted">
+            No terminal or local server needed. Sign in to CourseLink, then Sync.
+          </div>
+        </div>
+      )}
+
+      {status === "signed_out" && (
+        <div className="conflict-banner" style={{ marginBottom: 8 }} role="alert">
+          <div style={{ fontWeight: 600 }}>Signed out of CourseLink</div>
+          <div className="small" style={{ marginTop: 4 }}>
+            Open CourseLink and sign in, then Sync again.
+          </div>
+          <button
+            type="button"
+            className="btn"
+            style={{ marginTop: 6 }}
+            onClick={() => void openCourseLink(true)}
+          >
+            Open CourseLink
+          </button>
+        </div>
+      )}
+
+      {overdue.length > 0 && status !== "signed_out" && (
         <div className="conflict-banner" style={{ marginBottom: 8 }}>
           ⚠ {overdue.length} overdue
         </div>
@@ -67,7 +109,7 @@ export function Popup() {
         <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => void requestSync()}>
           Sync
         </button>
-        <button type="button" className="btn" style={{ flex: 1 }} onClick={() => openApp()}>
+        <button type="button" className="btn" style={{ flex: 1 }} onClick={() => void openApp()}>
           Open gryphOS
         </button>
       </div>

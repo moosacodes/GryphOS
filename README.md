@@ -8,6 +8,10 @@ from your existing CourseLink browser session, reconciles it with imported
 course outlines, and presents a unified semester dashboard — without a chatbot,
 backend, or telemetry.
 
+**Everyday use does not need a terminal.** After you build once and load the
+extension from `dist/`, gryphOS runs entirely inside Chrome. Close the terminal;
+leave it closed.
+
 ## Features
 
 - CourseLink sync via your signed-in browser session (no passwords)
@@ -23,25 +27,43 @@ backend, or telemetry.
 
 See [PRIVACY.md](./PRIVACY.md). All academic data stays on your device.
 
-## Install (Chrome)
+## Install (Chrome) — normal use
 
-1. `npm install`
-2. `npm run build`
-3. Open `chrome://extensions`
-4. Enable **Developer mode**
-5. **Load unpacked** → select the `dist/` folder
-6. Sign in to [CourseLink](https://courselink.uoguelph.ca), open any CourseLink page, click **Sync** in the popup or app
+Build once, then use the extension forever with no terminal and no local server:
 
-## Development
+1. One-time setup (terminal only for this step):
+   ```bash
+   npm install
+   npm run build
+   ```
+2. Open `chrome://extensions`
+3. Enable **Developer mode**
+4. **Load unpacked** → select the `dist/` folder in this repo
+5. Pin gryphOS if you like. You can close the terminal now.
+6. Sign in to [CourseLink](https://courselink.uoguelph.ca), open any CourseLink page, then click **Sync** in the extension popup (or in the full app)
+
+The `dist/` folder is a complete Manifest V3 extension (HTML, JS, CSS, icons).
+Chrome loads those files directly. There is no Vite/dev server and nothing to
+keep running in the background.
+
+Reload the extension in `chrome://extensions` only after you run `npm run build`
+again (for updates). Day-to-day syncing and browsing never need npm.
+
+## Development (optional)
+
+Only for people changing the code. Regular students/users should ignore this.
 
 ```bash
 npm install
-npm run dev          # Vite UI (extension APIs limited outside Chrome)
 npm run typecheck
 npm run lint
 npm test
-npm run build        # produces loadable MV3 extension in dist/
+npm run build        # refresh dist/ for Load unpacked
+npm run dev          # optional Vite preview of the UI only — NOT how you run the extension
 ```
+
+`npm run dev` is a developer convenience for UI work. It does **not** replace
+loading `dist/` in Chrome, and the real extension does not talk to that server.
 
 ## Architecture
 

@@ -23,6 +23,17 @@ export async function requestSync(): Promise<void> {
   }
 }
 
-export function openApp(): void {
-  void chrome.tabs.create({ url: chrome.runtime.getURL("app.html") });
+/** Open the full app from the packed extension (chrome-extension://…/app.html). */
+export async function openApp(): Promise<void> {
+  const url = chrome.runtime.getURL("app.html");
+  try {
+    await chrome.tabs.create({ url });
+  } catch {
+    // Popup context can flake; background owns a reliable open path.
+    try {
+      await chrome.runtime.sendMessage({ type: "GRYPHOS_OPEN_APP" });
+    } catch {
+      window.open(url, "_blank");
+    }
+  }
 }

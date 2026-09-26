@@ -2,6 +2,14 @@
 
 Guide for coding agents working in this repository.
 
+## Production vs development
+
+- **Users run the Chrome extension from `dist/`.** After `npm run build` and
+  Load unpacked, no terminal, no `npm run dev`, and no localhost server is
+  required. Do not document or implement a workflow that needs a live terminal
+  for everyday use.
+- `npm run dev` is optional UI preview for contributors only.
+
 ## Repository map
 
 - `src/domain` — canonical types, IDs, date helpers
@@ -10,15 +18,16 @@ Guide for coding agents working in this repository.
 - `src/adapters/uofg` — seeded academic dates (no brittle scrape required)
 - `src/normalize` — raw → domain
 - `src/reconcile` — dedupe, merge, conflicts
-- `src/storage` — IndexedDB + chrome.storage.local + migrations
+- `src/storage` — chrome.storage.local (+ optional IDB helpers) with migrations
 - `src/sync` — bounded-concurrency sync engine
 - `src/engines` — grades, workload, health, status, ICS
 - `src/content` — CourseLink content script entry
 - `src/background` — MV3 service worker
-- `src/ui` — full React app
-- `src/popup` — compact popup
+- `src/ui` — full React app (bundled into dist/)
+- `src/popup` — compact popup (bundled into dist/)
 - `tests` / `fixtures` — sanitized automated tests
 - `docs` — architecture docs
+- `dist/` — loadable MV3 extension artifact (self-contained)
 
 ## Commands
 
@@ -26,7 +35,8 @@ Guide for coding agents working in this repository.
 - `npm run typecheck`
 - `npm run lint`
 - `npm test`
-- `npm run build` → `dist/` loadable extension
+- `npm run build` → self-contained `dist/` for Chrome Load unpacked
+- `npm run dev` → optional Vite UI preview only (not required for the extension)
 
 ## Architectural invariants
 
@@ -37,11 +47,12 @@ Guide for coding agents working in this repository.
 5. Manual overrides never destroy source records
 6. No telemetry, no backend, no passwords
 7. Do not commit `_ref/` or `MASTER_BUILD.md`
+8. **Production `dist/` must not depend on localhost / a running terminal**
 
 ## Entry points
 
-- UI: `src/ui/main.tsx` → `app.html`
-- Popup: `src/popup/main.tsx` → `popup.html`
+- UI: `src/ui/main.tsx` → `app.html` → `dist/app.html`
+- Popup: `src/popup/main.tsx` → `popup.html` → `dist/popup.html`
 - Sync: content script message `GRYPHOS_SYNC` → `src/sync/engine.ts`
 
 ## Testing
