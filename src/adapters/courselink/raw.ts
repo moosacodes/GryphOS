@@ -95,14 +95,19 @@ export interface RawCalendarEvent {
 export interface RawContentTopic {
   TopicId?: number;
   Id?: number;
+  Identifier?: string | number;
   Title: string;
   ShortTitle?: string | null;
   Url?: string | null;
-  TopicType?: number; // 1 = file
-  Type?: number;
+  TopicType?: number; // 1 = file, 3 = link
+  Type?: number; // 1 = topic in ContentObject
+  TypeIdentifier?: string | null;
+  ActivityType?: number | null;
   IsHidden?: boolean;
   IsLocked?: boolean;
+  IsBroken?: boolean;
   LastModifiedDate?: string | null;
+  Description?: { Text?: string | null; Html?: string | null } | null;
 }
 
 export interface RawContentModule {
@@ -111,9 +116,19 @@ export interface RawContentModule {
   Title: string;
   Topics?: RawContentTopic[];
   Modules?: RawContentModule[];
+  /** ContentObject shape from /content/root/ and /structure/ */
+  Structure?: Array<RawContentModule | RawContentTopic>;
+  Type?: number; // 0 = module
   IsHidden?: boolean;
+  IsLocked?: boolean;
+  Description?: { Text?: string | null; Html?: string | null } | null;
 }
 
 export interface RawContentToc {
   Modules?: RawContentModule[];
+}
+
+export interface RawOverview {
+  Description?: { Text?: string | null; Html?: string | null } | null;
+  HasAttachment?: boolean;
 }

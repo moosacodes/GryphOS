@@ -14,7 +14,7 @@ const course: Course = {
   selected: true,
   instructorNames: [],
   url: "",
-  outlineDocumentId: null,
+  outlineDocumentId: null, outlineStatus: "not_checked" as const, outlineStatusDetail: null,
   updatedAt: "",
 };
 

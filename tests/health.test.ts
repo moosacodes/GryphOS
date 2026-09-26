@@ -7,7 +7,7 @@ describe("data health", () => {
     const course: Course = {
       id: "course:1", orgUnitId: 1, code: "CIS*2520", title: "DS", semester: null,
       startDate: null, endDate: null, color: "#000", selected: true, instructorNames: [],
-      url: "", outlineDocumentId: null, updatedAt: "",
+      url: "", outlineDocumentId: null, outlineStatus: "not_checked" as const, outlineStatusDetail: null, updatedAt: "",
     };
     const assessments: Assessment[] = [{
       id: "a", courseId: course.id, title: "A1", type: "assignment",

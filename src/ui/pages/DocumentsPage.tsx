@@ -178,7 +178,7 @@ export function DocumentsPage({
       <div className="page-header">
         <div>
           <h1>Documents</h1>
-          <p>Outlines are discovered automatically during CourseLink sync when content files are available. Manual import below is a fallback. Parsing is local and deterministic.</p>
+          <p>Outlines are discovered automatically on every CourseLink Sync (content TOC/Structure, overview, news). Each course reports outline found/parsed vs none accessible or blocked. Manual import below is a fallback when Brightspace blocks downloads. Parsing is local and deterministic.</p>
         </div>
       </div>
 
@@ -188,7 +188,7 @@ export function DocumentsPage({
           <label htmlFor="course">Associate with course</label>
           <select id="course" defaultValue={data.courses[0]?.id ?? ""}>
             {data.courses.map((c) => (
-              <option key={c.id} value={c.id}>{c.code} — {c.title}</option>
+              <option key={c.id} value={c.id}>{c.code} â€” {c.title}</option>
             ))}
           </select>
         </div>
@@ -207,7 +207,7 @@ export function DocumentsPage({
             }}
           />
         </div>
-        {busy && <p className="small muted">Parsing…</p>}
+        {busy && <p className="small muted">Parsingâ€¦</p>}
         {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
       </div>
 
@@ -220,9 +220,9 @@ export function DocumentsPage({
               <div>
                 <h2 style={{ marginTop: 0 }}>{d.filename}</h2>
                 <p className="small muted">
-                  {data.courses.find((c) => c.id === d.courseId)?.code ?? "Unassigned"} ·{" "}
+                  {data.courses.find((c) => c.id === d.courseId)?.code ?? "Unassigned"} Â·{" "}
                   {new Date(d.importedAt).toLocaleString()}
-                  {d.parseResult ? ` · confidence ${Math.round(d.parseResult.confidence * 100)}%` : ""}
+                  {d.parseResult ? ` Â· confidence ${Math.round(d.parseResult.confidence * 100)}%` : ""}
                 </p>
               </div>
               <div style={{ display: "flex", gap: "0.4rem" }}>
@@ -235,8 +235,8 @@ export function DocumentsPage({
             {editing === d.id && d.parseResult && (
               <div style={{ marginTop: "0.75rem" }}>
                 <p className="small">
-                  Code: {d.parseResult.courseCode ?? "—"} · Title: {d.parseResult.courseTitle ?? "—"} · Term:{" "}
-                  {d.parseResult.term ?? "—"}
+                  Code: {d.parseResult.courseCode ?? "â€”"} Â· Title: {d.parseResult.courseTitle ?? "â€”"} Â· Term:{" "}
+                  {d.parseResult.term ?? "â€”"}
                 </p>
                 <table className="table">
                   <thead>
@@ -246,7 +246,7 @@ export function DocumentsPage({
                     {d.parseResult.assessments.map((a, i) => (
                       <tr key={i}>
                         <td>{a.title}</td>
-                        <td>{a.weightPercent != null ? `${a.weightPercent}%` : "—"}</td>
+                        <td>{a.weightPercent != null ? `${a.weightPercent}%` : "â€”"}</td>
                         <td>{a.dueLabel ?? a.dueIso ?? a.certainty}</td>
                         <td>
                           <button
@@ -264,7 +264,7 @@ export function DocumentsPage({
                     ))}
                   </tbody>
                 </table>
-                <p className="small muted">Original document text is never modified — corrections update structured parse data only.</p>
+                <p className="small muted">Original document text is never modified â€” corrections update structured parse data only.</p>
               </div>
             )}
           </div>

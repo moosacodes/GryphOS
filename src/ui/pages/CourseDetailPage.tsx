@@ -36,12 +36,12 @@ export function CourseDetailPage({ data }: { data: AppData }) {
     <div>
       <div className="page-header">
         <div>
-          <p className="small"><Link to="/courses">← Courses</Link></p>
+          <p className="small"><Link to="/courses">â† Courses</Link></p>
           <h1>
             <span className="dot" style={{ display: "inline-block", background: course.color, marginRight: 8 }} />
             {course.code}
           </h1>
-          <p>{course.title}{course.semester ? ` · ${course.semester}` : ""}</p>
+          <p>{course.title}{course.semester ? ` Â· ${course.semester}` : ""}</p>
         </div>
         <a className="btn" href={course.url} target="_blank" rel="noreferrer">CourseLink</a>
       </div>
@@ -52,13 +52,13 @@ export function CourseDetailPage({ data }: { data: AppData }) {
           <p className="small">Data health: <strong>{healthStatusLabel(health.status)}</strong> ({health.score}%)</p>
           <ul className="small">
             {health.checks.map((ch) => (
-              <li key={ch.id}>{ch.ok ? "✓" : "⚠"} {ch.label}</li>
+              <li key={ch.id}>{ch.ok ? "âœ“" : "âš "} {ch.label}</li>
             ))}
           </ul>
           <p className="small muted">
             Calculated grade:{" "}
             {grades.calculatedPercent != null ? `${grades.calculatedPercent.toFixed(1)}%` : "Not enough data"}
-            {" · "}completed weight {grades.completedWeight.toFixed(0)}%
+            {" Â· "}completed weight {grades.completedWeight.toFixed(0)}%
           </p>
         </div>
 
@@ -70,7 +70,7 @@ export function CourseDetailPage({ data }: { data: AppData }) {
             <ul className="small">
               {course.instructorNames.map((n) => <li key={n}>{n} (instructor)</li>)}
               {people.map((p) => (
-                <li key={p.id}>{p.name} ({p.role}){p.email ? ` · ${p.email}` : ""}</li>
+                <li key={p.id}>{p.name} ({p.role}){p.email ? ` Â· ${p.email}` : ""}</li>
               ))}
             </ul>
           )}
@@ -78,7 +78,7 @@ export function CourseDetailPage({ data }: { data: AppData }) {
           {meetings.length === 0 ? (
             <p className="muted small">No schedule detected.</p>
           ) : (
-            <ul className="small">{meetings.map((m) => <li key={m.id}>{m.kind}: {m.notes ?? m.location ?? "—"}</li>)}</ul>
+            <ul className="small">{meetings.map((m) => <li key={m.id}>{m.kind}: {m.notes ?? m.location ?? "â€”"}</li>)}</ul>
           )}
         </div>
 
@@ -105,7 +105,7 @@ export function CourseDetailPage({ data }: { data: AppData }) {
           ) : (
             <>
               <ul className="small">{resources.map((r) => <li key={r.id}>{r.title}</li>)}</ul>
-              <ul className="small">{policies.map((p) => <li key={p.id}><strong>{p.title}</strong>: {p.body.slice(0, 160)}…</li>)}</ul>
+              <ul className="small">{policies.map((p) => <li key={p.id}><strong>{p.title}</strong>: {p.body.slice(0, 160)}â€¦</li>)}</ul>
             </>
           )}
         </div>
@@ -116,7 +116,7 @@ export function CourseDetailPage({ data }: { data: AppData }) {
             <li>CourseLink course unit {course.orgUnitId}</li>
             <li>Outline: {outline ? outline.filename : "not imported"}</li>
           </ul>
-          <p className="small"><Link to="/documents">Manage documents →</Link></p>
+          <p className="small"><Link to="/documents">Manage documents â†’</Link></p>
         </div>
       </div>
     </div>

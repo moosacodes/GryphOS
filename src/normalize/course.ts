@@ -32,6 +32,8 @@ export function toCourse(c: RawCourse, colorIndex = 0): Course {
     instructorNames: [],
     url: `${COURSELINK_ORIGIN}/d2l/home/${orgUnitId}`,
     outlineDocumentId: null,
+    outlineStatus: "not_checked",
+    outlineStatusDetail: null,
     updatedAt: new Date().toISOString(),
   };
 }

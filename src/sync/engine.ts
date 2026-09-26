@@ -16,7 +16,10 @@ import {
   getVersions,
   getWhoAmI,
 } from "@/adapters/courselink/api";
-import { discoverCourseOutline } from "@/adapters/courselink/discoverOutlines";
+import {
+  discoverCourseOutline,
+  type OutlineDiscoveryHit,
+} from "@/adapters/courselink/discoverOutlines";
 import { seedAcademicDates } from "@/adapters/uofg/academicDates";
 import { COURSE_COLORS, DEFAULT_CONCURRENCY, FUTURE_DAYS, PAST_DAYS } from "@/domain/constants";
 import type {
@@ -24,7 +27,7 @@ import type {
   AppData,
   Assessment,
   Course,
-  ImportedDocument,
+  OutlineDiscoveryStatus,
   SourceRecord,
 } from "@/domain/types";
 import {
@@ -64,7 +67,7 @@ async function syncCourse(course: Course, le: string): Promise<{
   assessments: Assessment[];
   sources: SourceRecord[];
   announcements: Announcement[];
-  outline: ImportedDocument | null;
+  outline: OutlineDiscoveryHit;
   failed: boolean;
 }> {
   let failed = false;
@@ -80,7 +83,17 @@ async function syncCourse(course: Course, le: string): Promise<{
       safe(getMyGradeValues(le, course.orgUnitId)),
       safe(getNews(le, course.orgUnitId)),
       safe(getCalendarEvents(le, course.orgUnitId)),
-      safe(discoverCourseOutline(course, le)),
+      discoverCourseOutline(course, le).catch((e): OutlineDiscoveryHit => {
+        if (e instanceof SignedOutError) throw e;
+        return {
+          document: null,
+          parseResult: null,
+          score: 0,
+          status: "none_accessible",
+          statusDetail: `Outline discovery error: ${String((e as Error).message ?? e)}`,
+          candidatesTried: 0,
+        };
+      }),
     ]);
 
   const sources: SourceRecord[] = [];
@@ -126,7 +139,7 @@ async function syncCourse(course: Course, le: string): Promise<{
     assessments: items,
     sources,
     announcements,
-    outline: outlineHit?.document ?? null,
+    outline: outlineHit,
     failed,
   };
 }
@@ -184,6 +197,22 @@ function mergeOutlineAssessments(
   return [...existing, ...fromOutline];
 }
 
+function setCourseOutlineStatus(
+  data: AppData,
+  courseId: string,
+  status: OutlineDiscoveryStatus,
+  detail: string | null,
+): AppData {
+  return {
+    ...data,
+    courses: data.courses.map((c) =>
+      c.id === courseId
+        ? { ...c, outlineStatus: status, outlineStatusDetail: detail }
+        : c,
+    ),
+  };
+}
+
 export async function runSync(): Promise<void> {
   const before = await loadAppData();
   await saveAppData({
@@ -227,6 +256,8 @@ export async function runSync(): Promise<void> {
           color,
           selected,
           outlineDocumentId: prev?.outlineDocumentId ?? null,
+          outlineStatus: prev?.outlineStatus ?? "not_checked",
+          outlineStatusDetail: prev?.outlineStatusDetail ?? null,
           instructorNames: prev?.instructorNames ?? [],
         };
       })
@@ -254,14 +285,20 @@ export async function runSync(): Promise<void> {
     const assessments: Assessment[] = [];
     const sources: SourceRecord[] = [];
     const announcements: Announcement[] = [];
+    const outlineSummaries: string[] = [];
 
     results.forEach((r, i) => {
       if (r.failed) failedCodes.push(selected[i].code);
       assessments.push(...r.assessments);
       sources.push(...r.sources);
       announcements.push(...r.announcements);
-      if (r.outline) {
-        const courseId = selected[i].id;
+
+      const courseId = selected[i].id;
+      const hit = r.outline;
+      data = setCourseOutlineStatus(data, courseId, hit.status, hit.statusDetail);
+      outlineSummaries.push(`${selected[i].code}: ${hit.status}`);
+
+      if (hit.document) {
         const hasManual =
           !!data.documents.find(
             (d) => d.courseId === courseId && !d.id.startsWith("auto:") && !!d.parseResult,
@@ -269,13 +306,14 @@ export async function runSync(): Promise<void> {
           data.courses.find((c) => c.id === courseId)?.outlineDocumentId?.startsWith("auto:") ===
             false &&
           !!data.courses.find((c) => c.id === courseId)?.outlineDocumentId;
-        data = applyOutlineDocument(data, courseId, r.outline, {
+        data = applyOutlineDocument(data, courseId, hit.document, {
           preferExistingManual: hasManual,
         });
+        // Re-apply status after applyOutline (which may not set it)
+        data = setCourseOutlineStatus(data, courseId, hit.status, hit.statusDetail);
       }
     });
 
-    // Refresh course refs after outline apply
     const coursesAfter = data.courses;
 
     const preserved = before.assessments.filter(
@@ -285,7 +323,6 @@ export async function runSync(): Promise<void> {
     for (const c of selected) {
       const course = coursesAfter.find((x) => x.id === c.id) ?? c;
       const courseItems = assessments.filter((a) => a.courseId === c.id);
-      // If applyOutline already merged assessments into data, prefer those for the course
       const fromData = data.assessments.filter((a) => a.courseId === c.id);
       const hasOutlineItems = fromData.some((a) => a.id.startsWith("outline:"));
       if (hasOutlineItems) {
@@ -319,6 +356,11 @@ export async function runSync(): Promise<void> {
     const term = currentSemester(coursesAfter);
     const academicDates = seedAcademicDates(term);
 
+    const outlineMsg =
+      outlineSummaries.length > 0
+        ? `Outlines — ${outlineSummaries.join("; ")}`
+        : null;
+
     data = {
       ...data,
       assessments: reconciled.assessments,
@@ -334,13 +376,13 @@ export async function runSync(): Promise<void> {
             status: "error",
             lastSyncedAt: before.sync.lastSyncedAt,
             startedAt: null,
-            message: `couldn't load ${failedCodes.join(", ")}`,
+            message: `couldn't load ${failedCodes.join(", ")}${outlineMsg ? ` · ${outlineMsg}` : ""}`,
           }
         : {
             status: "idle",
             lastSyncedAt: Date.now(),
             startedAt: null,
-            message: null,
+            message: outlineMsg,
           },
     };
 

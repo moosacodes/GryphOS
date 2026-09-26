@@ -50,9 +50,9 @@ export function computeCourseHealth(
     { id: "courselink", ok: true, warn: false, label: "CourseLink connected" },
     {
       id: "outline",
-      ok: !!outline,
-      warn: !outline,
-      label: outline ? "Course outline imported" : "Outline not imported",
+      ok: !!outline || course.outlineStatus === "parsed" || course.outlineStatus === "found",
+      warn: !outline && course.outlineStatus !== "parsed" && course.outlineStatus !== "found",
+      label: outlineStatusLabel(course),
     },
     {
       id: "assessments",
@@ -130,6 +130,24 @@ export function computeCourseHealth(
   else status = "missing_information";
 
   return { courseId: course.id, status, score, checks };
+}
+
+function outlineStatusLabel(course: Course): string {
+  switch (course.outlineStatus) {
+    case "parsed":
+      return course.outlineStatusDetail ?? "Outline found & parsed";
+    case "found":
+      return course.outlineStatusDetail ?? "Outline found (limited parse)";
+    case "blocked":
+      return course.outlineStatusDetail ?? "Outline blocked by Brightspace (403)";
+    case "none_accessible":
+      return course.outlineStatusDetail ?? "No outline accessible";
+    case "parse_failed":
+      return "Outline download failed to parse";
+    case "not_checked":
+    default:
+      return "Outline not checked yet — Sync on CourseLink";
+  }
 }
 
 export function healthStatusLabel(s: HealthStatus): string {

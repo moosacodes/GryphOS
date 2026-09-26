@@ -37,6 +37,10 @@ export function applyOutlineDocument(
       ? {
           ...c,
           outlineDocumentId: doc.id,
+          outlineStatus: result.assessments.length > 0 || result.confidence >= 0.45 ? "parsed" as const : "found" as const,
+          outlineStatusDetail: result.assessments.length > 0
+            ? `Outline parsed (${result.assessments.length} assessments)` 
+            : "Outline document applied",
           instructorNames:
             result.instructors.length > 0
               ? result.instructors.map((i) => i.name)

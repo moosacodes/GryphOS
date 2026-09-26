@@ -1,48 +1,152 @@
 /**
- * Discover syllabus/outline files from CourseLink content modules during sync.
+ * Discover syllabus/outline files from CourseLink during sync.
  * Deterministic heuristics only — never invents academic data.
+ *
+ * Brightspace shapes:
+ * - GET /content/toc → { Modules: [{ Topics, Modules }] }
+ * - GET /content/root/ → ContentObject modules with Structure[] (Type 0=module, Type 1=topic)
+ * - Topic file: /content/topics/{id}/file
+ * - Topic Url: /content/enforced/... (session cookie fetch)
+ * - Overview: /overview (+ /overview/attachment)
+ * - News posts mentioning outline/grading (text only)
  */
 import { parseOutlineText } from "@/adapters/outline/parse";
 import { extractPdfText } from "@/adapters/outline/pdf";
-import type { Course, ImportedDocument, OutlineParseResult } from "@/domain/types";
-import { getContentToc, getContentTopicFile, HttpError, SignedOutError } from "./api";
+import { COURSELINK_ORIGIN } from "@/domain/constants";
+import type {
+  Course,
+  ImportedDocument,
+  OutlineDiscoveryStatus,
+  OutlineParseResult,
+} from "@/domain/types";
+import {
+  getContentToc,
+  getContentTopicFile,
+  getNews,
+  getOverview,
+  getOverviewAttachment,
+  HttpError,
+  SignedOutError,
+} from "./api";
 import type { RawContentModule, RawContentTopic } from "./raw";
 
 const OUTLINE_NAME =
-  /\b(syllabus|outline|course\s*outline|course\s*info(?:rmation)?|welcome\s*package|course\s*overview|grading\s*scheme|evaluation)\b/i;
-const FILE_EXT = /\.(pdf|txt|html?|htm)$/i;
+  /\b(course[\s_-]*outline|syllabus|course\s*info(?:rmation)?|welcome\s*package|course\s*overview|grading\s*scheme|evaluation\s*scheme|assessment\s*overview)\b/i;
+const WEAK_OUTLINE =
+  /\b(outline|overview|introduction|welcome|policies|expectations)\b/i;
+const FILE_EXT = /\.(pdf|txt|html?|htm|rtf|md)(\?|$)/i;
 
-export interface DiscoveredOutline {
-  document: ImportedDocument;
-  parseResult: OutlineParseResult;
+export interface OutlineDiscoveryHit {
+  document: ImportedDocument | null;
+  parseResult: OutlineParseResult | null;
   score: number;
+  status: OutlineDiscoveryStatus;
+  statusDetail: string;
+  candidatesTried: number;
+}
+
+interface FlatTopic {
+  title: string;
+  url: string | null;
+  id: number | null;
+  parentTitle: string | null;
+  isFileLike: boolean;
 }
 
 function topicId(t: RawContentTopic): number | null {
-  const id = t.TopicId ?? t.Id;
-  return typeof id === "number" && Number.isFinite(id) ? id : null;
+  const raw = t.TopicId ?? t.Id ?? t.Identifier;
+  if (raw == null) return null;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
-function flattenTopics(modules: RawContentModule[], out: RawContentTopic[] = []): RawContentTopic[] {
-  for (const m of modules) {
-    if (m.IsHidden) continue;
-    for (const t of m.Topics ?? []) {
-      if (!t.IsHidden && !t.IsLocked) out.push(t);
-    }
-    if (m.Modules?.length) flattenTopics(m.Modules, out);
+function isTopicNode(node: RawContentModule | RawContentTopic): boolean {
+  const any = node as RawContentTopic & RawContentModule;
+  if (any.Type === 1) return true;
+  if (any.Type === 0) return false;
+  if (any.TopicId != null || any.TopicType != null) return true;
+  if (
+    Array.isArray(any.Structure) ||
+    Array.isArray(any.Modules) ||
+    Array.isArray(any.Topics)
+  ) {
+    return false;
   }
+  return Boolean(any.Url || any.Title);
+}
+
+function isFileLike(t: RawContentTopic): boolean {
+  const url = t.Url ?? "";
+  const typeId = (t.TypeIdentifier ?? "").toLowerCase();
+  if (FILE_EXT.test(url) || FILE_EXT.test(t.Title ?? "")) return true;
+  if (typeId.includes("file") || typeId.includes("document")) return true;
+  if (t.TopicType === 1) return true;
+  if (t.Type === 1 && url && !/^https?:\/\//i.test(url)) return true;
+  return false;
+}
+
+/** Flatten TOC (Topics/Modules) and ContentObject (Structure) trees. */
+export function flattenContentTopics(modules: RawContentModule[]): FlatTopic[] {
+  const out: FlatTopic[] = [];
+
+  function walk(mods: RawContentModule[], parentTitle: string | null) {
+    for (const m of mods) {
+      if (m.IsHidden) continue;
+      const modTitle = m.Title ?? parentTitle;
+      for (const t of m.Topics ?? []) {
+        if (t.IsHidden || t.IsBroken) continue;
+        out.push({
+          title: t.Title ?? "Untitled",
+          url: t.Url ?? null,
+          id: topicId(t),
+          parentTitle: modTitle ?? null,
+          isFileLike: isFileLike(t),
+        });
+      }
+      if (m.Modules?.length) walk(m.Modules, modTitle ?? parentTitle);
+      for (const node of m.Structure ?? []) {
+        if (isTopicNode(node)) {
+          const t = node as RawContentTopic;
+          if (t.IsHidden || t.IsBroken) continue;
+          out.push({
+            title: t.Title ?? "Untitled",
+            url: t.Url ?? null,
+            id: topicId(t),
+            parentTitle: modTitle ?? parentTitle,
+            isFileLike: isFileLike(t),
+          });
+        } else {
+          walk([node as RawContentModule], modTitle ?? parentTitle);
+        }
+      }
+    }
+  }
+
+  walk(modules, null);
   return out;
 }
 
-export function scoreOutlineCandidate(title: string, url?: string | null): number {
-  const hay = `${title} ${url ?? ""}`.toLowerCase();
+export function scoreOutlineCandidate(
+  title: string,
+  url?: string | null,
+  parentTitle?: string | null,
+): number {
+  const hay = `${parentTitle ?? ""} ${title} ${url ?? ""}`.toLowerCase();
   let score = 0;
   if (OUTLINE_NAME.test(hay)) score += 50;
+  if (/\bcourse[\s_-]*outline\b/i.test(hay)) score += 30;
   if (/syllabus/.test(hay)) score += 20;
-  if (/outline/.test(hay)) score += 15;
+  if (/outline/.test(hay) && !OUTLINE_NAME.test(hay)) score += 15;
+  if (WEAK_OUTLINE.test(hay) && !OUTLINE_NAME.test(hay)) score += 12;
+  if (parentTitle && OUTLINE_NAME.test(parentTitle)) score += 35;
+  if (parentTitle && WEAK_OUTLINE.test(parentTitle)) score += 15;
   if (FILE_EXT.test(hay)) score += 10;
-  if (/\.(docx?|pptx?|zip)$/i.test(hay)) score -= 30;
-  if (/lecture|week\s*\d|assignment\s*\d|lab\s*\d|quiz\s*\d/.test(hay)) score -= 25;
+  if (/\.pdf(\?|$)/i.test(hay)) score += 8;
+  if (/\.(docx?|pptx?|zip)(\?|$)/i.test(hay)) score -= 30;
+  if (/lecture|week\s*\d|assignment\s*\d|lab\s*\d|quiz\s*\d|chapter\s*\d/.test(hay)) {
+    score -= 25;
+  }
+  if (/\b(rubric|solution|answer\s*key|sample)\b/i.test(hay)) score -= 20;
   return score;
 }
 
@@ -62,68 +166,355 @@ async function materializeText(
   if (
     lower.includes("html") ||
     lower.includes("text") ||
-    /\.(txt|html?|htm)$/i.test(filename)
+    lower.includes("json") ||
+    /\.(txt|html?|htm|md|rtf)$/i.test(filename)
   ) {
     const text = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
-    if (lower.includes("html")) {
+    if (lower.includes("html") || /\.html?$/i.test(filename)) {
       return text
         .replace(/<script[\s\S]*?<\/script>/gi, " ")
         .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<[^>]+>/g, " ");
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
     }
     return text;
   }
+  // Unknown binary — try UTF-8 decode if it looks textual
+  const bytes = new Uint8Array(buffer.slice(0, 64));
+  let textual = bytes.length > 0;
+  for (const b of bytes) {
+    if (b === 0) {
+      textual = false;
+      break;
+    }
+    // tab, lf, cr, or printable ASCII
+    if (!(b === 9 || b === 10 || b === 13 || (b >= 32 && b <= 126) || b >= 128)) {
+      textual = false;
+      break;
+    }
+  }
+  if (textual) {
+    return new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+  }
   return null;
+}
+
+async function fetchContentUrl(
+  pathOrUrl: string,
+): Promise<{ buffer: ArrayBuffer; contentType: string; filename: string } | null> {
+  try {
+    const url = pathOrUrl.startsWith("http")
+      ? pathOrUrl
+      : pathOrUrl.startsWith("/")
+        ? `${COURSELINK_ORIGIN}${pathOrUrl}`
+        : `${COURSELINK_ORIGIN}/${pathOrUrl}`;
+    if (new URL(url).origin !== COURSELINK_ORIGIN) return null;
+    const res = await fetch(url, { credentials: "include", redirect: "follow" });
+    if (!res.ok) return null;
+    const contentType = res.headers.get("content-type") ?? "application/octet-stream";
+    const cd = res.headers.get("content-disposition") ?? "";
+    const nameMatch = cd.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+    const filename = nameMatch
+      ? decodeURIComponent(nameMatch[1].replace(/"/g, ""))
+      : pathOrUrl.split("/").pop() ?? "download";
+    return { buffer: await res.arrayBuffer(), contentType, filename };
+  } catch {
+    return null;
+  }
+}
+
+function emptyHit(
+  status: OutlineDiscoveryStatus,
+  detail: string,
+  tried = 0,
+): OutlineDiscoveryHit {
+  return {
+    document: null,
+    parseResult: null,
+    score: 0,
+    status,
+    statusDetail: detail,
+    candidatesTried: tried,
+  };
+}
+
+function looksLikeOutline(parseResult: OutlineParseResult, score: number): boolean {
+  if (parseResult.assessments.length >= 2) return true;
+  if (parseResult.confidence >= 0.45) return true;
+  if (score >= 60 && parseResult.assessments.length >= 1) return true;
+  if (score >= 80 && (parseResult.policies.length > 0 || parseResult.instructors.length > 0)) {
+    return true;
+  }
+  // High-name-score file with substantial text still worth keeping as "found"
+  return false;
+}
+
+function buildDoc(
+  course: Course,
+  idSuffix: string,
+  filename: string,
+  mimeType: string,
+  text: string,
+  parseResult: OutlineParseResult,
+): ImportedDocument {
+  return {
+    id: `auto:${course.id}:${idSuffix}`,
+    courseId: course.id,
+    filename,
+    mimeType,
+    importedAt: new Date().toISOString(),
+    textContent: text.slice(0, 500_000),
+    parseResult,
+    parseError: null,
+  };
 }
 
 export async function discoverCourseOutline(
   course: Course,
   le: string,
-): Promise<DiscoveredOutline | null> {
+): Promise<OutlineDiscoveryHit> {
   let modules: RawContentModule[] = [];
+  let sawForbidden = false;
+  let lastBlocked: string | null = null;
+
   try {
     modules = await getContentToc(le, course.orgUnitId);
   } catch (e) {
     if (e instanceof SignedOutError) throw e;
-    if (e instanceof HttpError && (e.status === 403 || e.status === 404)) return null;
-    return null;
-  }
-  if (!modules.length) return null;
-
-  const topics = flattenTopics(modules)
-    .map((t) => ({
-      topic: t,
-      id: topicId(t),
-      score: scoreOutlineCandidate(t.Title, t.Url),
-    }))
-    .filter((x) => x.id != null && x.score >= 40)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 4);
-
-  for (const cand of topics) {
-    try {
-      const file = await getContentTopicFile(le, course.orgUnitId, cand.id!);
-      const text = await materializeText(file.buffer, file.contentType, file.filename || cand.topic.Title);
-      if (!text || text.trim().length < 80) continue;
-      const parseResult = parseOutlineText(text);
-      // Require some signal that this looks like an outline
-      if (parseResult.confidence < 0.45 && parseResult.assessments.length < 2) continue;
-
-      const document: ImportedDocument = {
-        id: `auto:${course.id}:topic:${cand.id}`,
-        courseId: course.id,
-        filename: file.filename || cand.topic.Title || "Course outline",
-        mimeType: file.contentType,
-        importedAt: new Date().toISOString(),
-        textContent: text.slice(0, 500_000),
-        parseResult,
-        parseError: null,
-      };
-      return { document, parseResult, score: cand.score };
-    } catch (e) {
-      if (e instanceof SignedOutError) throw e;
-      // try next candidate
+    if (e instanceof HttpError && (e.status === 403 || e.status === 401)) {
+      sawForbidden = true;
     }
   }
-  return null;
+
+  const topics = flattenContentTopics(modules);
+  const ranked = topics
+    .map((t) => ({
+      ...t,
+      score:
+        scoreOutlineCandidate(t.title, t.url, t.parentTitle) + (t.isFileLike ? 8 : 0),
+    }))
+    .filter((x) => x.score >= 25)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+
+  let tried = 0;
+
+  for (const cand of ranked) {
+    tried += 1;
+    let file: { buffer: ArrayBuffer; contentType: string; filename: string } | null =
+      null;
+
+    if (cand.id != null) {
+      try {
+        file = await getContentTopicFile(le, course.orgUnitId, cand.id);
+      } catch (e) {
+        if (e instanceof SignedOutError) throw e;
+        if (e instanceof HttpError && (e.status === 403 || e.status === 401)) {
+          sawForbidden = true;
+          lastBlocked = `Download blocked for “${cand.title}”`;
+        }
+      }
+    }
+
+    if (!file && cand.url) {
+      file = await fetchContentUrl(cand.url);
+    }
+
+    if (!file || file.buffer.byteLength === 0) continue;
+
+    const text = await materializeText(
+      file.buffer,
+      file.contentType,
+      file.filename || cand.title,
+    );
+    if (!text || text.trim().length < 80) continue;
+
+    const parseResult = parseOutlineText(text);
+    const strong = looksLikeOutline(parseResult, cand.score);
+    // Keep high-scoring named files even if parse is weak (semester planning)
+    if (!strong && cand.score < 55) continue;
+
+    const document = buildDoc(
+      course,
+      `topic:${cand.id ?? "url"}`,
+      file.filename || cand.title || "Course outline",
+      file.contentType,
+      text,
+      parseResult,
+    );
+
+    const parsedWell =
+      parseResult.assessments.length > 0 || parseResult.confidence >= 0.45;
+
+    return {
+      document,
+      parseResult,
+      score: cand.score,
+      status: parsedWell ? "parsed" : "found",
+      statusDetail: parsedWell
+        ? `Outline “${document.filename}” parsed (${parseResult.assessments.length} assessment row(s))`
+        : `Outline “${document.filename}” found; limited structured parse`,
+      candidatesTried: tried,
+    };
+  }
+
+  // Overview attachment + HTML
+  try {
+    const overview = await getOverview(le, course.orgUnitId);
+    if (overview?.HasAttachment) {
+      tried += 1;
+      try {
+        const att = await getOverviewAttachment(le, course.orgUnitId);
+        if (att && att.buffer.byteLength > 0) {
+          const text = await materializeText(
+            att.buffer,
+            att.contentType,
+            att.filename || "Course Overview",
+          );
+          if (text && text.trim().length >= 80) {
+            const parseResult = parseOutlineText(text);
+            const document = buildDoc(
+              course,
+              "overview",
+              att.filename || "Course Overview Attachment",
+              att.contentType,
+              text,
+              parseResult,
+            );
+            const parsedWell =
+              parseResult.assessments.length > 0 || parseResult.confidence >= 0.45;
+            return {
+              document,
+              parseResult,
+              score: 70,
+              status: parsedWell ? "parsed" : "found",
+              statusDetail: parsedWell
+                ? `Overview attachment parsed (${parseResult.assessments.length} assessments)`
+                : "Overview attachment found; limited structured parse",
+              candidatesTried: tried,
+            };
+          }
+        }
+      } catch (e) {
+        if (e instanceof SignedOutError) throw e;
+        if (e instanceof HttpError && (e.status === 403 || e.status === 401)) {
+          sawForbidden = true;
+          lastBlocked = "Overview attachment download blocked";
+        }
+      }
+    }
+
+    const html = overview?.Description?.Html ?? overview?.Description?.Text ?? "";
+    const plain = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (
+      plain.length >= 100 &&
+      (OUTLINE_NAME.test(plain) ||
+        WEAK_OUTLINE.test(plain) ||
+        /\b(%|weight|grading|evaluation)\b/i.test(plain))
+    ) {
+      tried += 1;
+      const parseResult = parseOutlineText(plain);
+      const document = buildDoc(
+        course,
+        "overview-html",
+        "Course Overview",
+        "text/html",
+        plain,
+        parseResult,
+      );
+      const parsedWell =
+        parseResult.assessments.length > 0 || parseResult.confidence >= 0.4;
+      return {
+        document,
+        parseResult,
+        score: 45,
+        status: parsedWell ? "parsed" : "found",
+        statusDetail: parsedWell
+          ? `Overview HTML parsed (${parseResult.assessments.length} assessments)`
+          : "Overview HTML captured for planning",
+        candidatesTried: tried,
+      };
+    }
+  } catch (e) {
+    if (e instanceof SignedOutError) throw e;
+    if (e instanceof HttpError && (e.status === 403 || e.status === 401)) {
+      sawForbidden = true;
+    }
+  }
+
+  // News posts with outline/grading content
+  try {
+    const news = await getNews(le, course.orgUnitId);
+    for (const item of news.slice(0, 8)) {
+      const body = `${item.Title ?? ""} ${item.Body?.Text ?? ""} ${item.Body?.Html ?? ""}`;
+      const plain = body
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (plain.length < 100) continue;
+      if (!OUTLINE_NAME.test(plain) && !/\bgrading\b.*%/i.test(plain)) continue;
+      tried += 1;
+      const parseResult = parseOutlineText(plain);
+      if (parseResult.assessments.length === 0 && parseResult.policies.length === 0) {
+        continue;
+      }
+      const document = buildDoc(
+        course,
+        `news:${item.Id}`,
+        item.Title || "News (outline-related)",
+        "text/html",
+        plain,
+        parseResult,
+      );
+      return {
+        document,
+        parseResult,
+        score: 40,
+        status: parseResult.assessments.length > 0 ? "parsed" : "found",
+        statusDetail: `News post “${document.filename}” used as outline source`,
+        candidatesTried: tried,
+      };
+    }
+  } catch (e) {
+    if (e instanceof SignedOutError) throw e;
+  }
+
+  if (sawForbidden) {
+    return emptyHit(
+      "blocked",
+      lastBlocked
+        ? `${lastBlocked}. Brightspace may list outline files in Content that the API cannot download — open the file in CourseLink or upload it under Documents.`
+        : "Brightspace blocked outline file access (403). Try opening the outline in CourseLink Content, or upload under Documents.",
+      tried,
+    );
+  }
+
+  if (topics.length === 0) {
+    return emptyHit(
+      "none_accessible",
+      "No content topics accessible (empty TOC/root or content not available for this course).",
+      tried,
+    );
+  }
+
+  if (ranked.length === 0) {
+    return emptyHit(
+      "none_accessible",
+      `Scanned ${topics.length} content item(s); none matched outline/syllabus naming.`,
+      tried,
+    );
+  }
+
+  return emptyHit(
+    "none_accessible",
+    `Tried ${tried} outline candidate(s) but could not download or extract usable text.` +
+      (lastBlocked ? ` ${lastBlocked}` : ""),
+    tried,
+  );
 }

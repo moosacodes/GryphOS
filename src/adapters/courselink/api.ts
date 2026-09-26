@@ -146,22 +146,31 @@ export async function getCalendarEvents(
   }
 }
 
-/** Full course content TOC when available. */
+/** Full course content TOC when available; falls back to /content/root/ (Structure shape). */
 export async function getContentToc(le: string, ou: number): Promise<RawContentModule[]> {
+  const tryRoot = async (): Promise<RawContentModule[]> => {
+    try {
+      const root = await getJSON<RawContentModule[] | RawContentToc>(
+        `/d2l/api/le/${le}/${ou}/content/root/`,
+      );
+      if (Array.isArray(root)) return root;
+      return root.Modules ?? [];
+    } catch (e2) {
+      if (e2 instanceof HttpError && (e2.status === 403 || e2.status === 404)) return [];
+      throw e2;
+    }
+  };
+
   try {
     const toc = await getJSON<RawContentToc | RawContentModule[]>(
       `/d2l/api/le/${le}/${ou}/content/toc`,
     );
-    if (Array.isArray(toc)) return toc;
-    return toc.Modules ?? [];
+    const modules = Array.isArray(toc) ? toc : (toc.Modules ?? []);
+    if (modules.length > 0) return modules;
+    return await tryRoot();
   } catch (e) {
     if (e instanceof HttpError && (e.status === 403 || e.status === 404)) {
-      try {
-        return await getJSON<RawContentModule[]>(`/d2l/api/le/${le}/${ou}/content/root/`);
-      } catch (e2) {
-        if (e2 instanceof HttpError && (e2.status === 403 || e2.status === 404)) return [];
-        throw e2;
-      }
+      return await tryRoot();
     }
     throw e;
   }
@@ -173,6 +182,30 @@ export async function getContentTopicFile(
   topicId: number,
 ): Promise<{ buffer: ArrayBuffer; contentType: string; filename: string }> {
   return getBinary(`/d2l/api/le/${le}/${ou}/content/topics/${topicId}/file?stream=1`);
+}
+
+export async function getOverview(
+  le: string,
+  ou: number,
+): Promise<import("./raw").RawOverview | null> {
+  try {
+    return await getJSON<import("./raw").RawOverview>(`/d2l/api/le/${le}/${ou}/overview`);
+  } catch (e) {
+    if (e instanceof HttpError && (e.status === 403 || e.status === 404)) return null;
+    throw e;
+  }
+}
+
+export async function getOverviewAttachment(
+  le: string,
+  ou: number,
+): Promise<{ buffer: ArrayBuffer; contentType: string; filename: string } | null> {
+  try {
+    return await getBinary(`/d2l/api/le/${le}/${ou}/overview/attachment`);
+  } catch (e) {
+    if (e instanceof HttpError && (e.status === 403 || e.status === 404)) return null;
+    throw e;
+  }
 }
 
 export type { RawContentTopic, RawContentModule };

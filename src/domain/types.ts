@@ -31,6 +31,15 @@ export type SubmissionState = "submitted" | "not_submitted" | "unknown";
 
 export type SyncStatus = "idle" | "syncing" | "error" | "signed_out";
 
+/** Per-course outline auto-discovery result from the last sync. */
+export type OutlineDiscoveryStatus =
+  | "found"
+  | "parsed"
+  | "none_accessible"
+  | "blocked"
+  | "not_checked"
+  | "parse_failed";
+
 export type ThemePreference = "light" | "dark" | "system";
 
 export type HealthStatus = "complete" | "good" | "missing_information" | "needs_attention";
@@ -198,6 +207,9 @@ export interface Course {
   instructorNames: string[];
   url: string;
   outlineDocumentId: string | null;
+  /** Result of last auto outline discovery attempt */
+  outlineStatus: OutlineDiscoveryStatus;
+  outlineStatusDetail: string | null;
   updatedAt: string;
 }
 
