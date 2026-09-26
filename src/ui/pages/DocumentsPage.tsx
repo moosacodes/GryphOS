@@ -3,6 +3,7 @@ import type { AppData, ImportedDocument } from "@/domain/types";
 import { parseOutlineFile } from "@/adapters/outline";
 import { applyOutlineDocument } from "@/sync/applyOutline";
 import { EmptyState } from "../components/EmptyState";
+import { DocumentDebugger } from "../components/DocumentDebugger";
 
 function uid(): string {
   return `doc:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
@@ -27,20 +28,41 @@ export function DocumentsPage({
     setBusy(true);
     setError(null);
     try {
-      const { text, result } = await parseOutlineFile(file);
+      const prevMem =
+        data.documentMemories?.find((m) => m.courseId === courseId) ?? null;
+      const understood = await parseOutlineFile(file, {
+        courseId,
+        visionOptIn: !!data.preferences.documentVisionOptIn,
+        previousMemory: prevMem,
+      });
+      const docId = uid();
       const doc: ImportedDocument = {
-        id: uid(),
+        id: docId,
         courseId: courseId || null,
         filename: file.name,
         mimeType: file.type || "application/octet-stream",
         importedAt: new Date().toISOString(),
-        textContent: text,
-        parseResult: result,
+        textContent: understood.text,
+        parseResult: understood.result,
         parseError: null,
+        blueprintId: understood.blueprint?.id ?? null,
+        contentHash: understood.blueprint?.contentHash ?? null,
+        extractionQuality: understood.blueprint?.quality.score ?? null,
+        layoutSummary: understood.blueprint?.layoutSummary
+          ? { ...understood.blueprint.layoutSummary }
+          : null,
       };
 
       await update((prev) =>
-        applyOutlineDocument(prev, courseId, doc, { preferExistingManual: false }),
+        applyOutlineDocument(prev, courseId, doc, {
+          preferExistingManual: false,
+          blueprint: understood.blueprint
+            ? { ...understood.blueprint, courseId, documentId: docId }
+            : null,
+          memory: understood.memory
+            ? { ...understood.memory, documentId: docId, courseId }
+            : null,
+        }),
       );
     } catch (e) {
       setError(String((e as Error).message ?? e));
@@ -180,6 +202,12 @@ export function DocumentsPage({
                     {data.courses.find((c) => c.id === d.courseId)?.code ?? "Unassigned"} ·{" "}
                     {new Date(d.importedAt).toLocaleString()}
                     {r ? ` · confidence ${Math.round(r.confidence * 100)}%` : ""}
+                    {d.extractionQuality != null
+                      ? ` · quality ${Math.round(d.extractionQuality * 100)}%`
+                      : ""}
+                    {d.layoutSummary
+                      ? ` · ${d.layoutSummary.extractionMethod} · ${d.layoutSummary.tableCount} tables`
+                      : ""}
                   </p>
                 </div>
                 <div style={{ display: "flex", gap: "0.4rem" }}>
@@ -195,6 +223,17 @@ export function DocumentsPage({
                   </button>
                 </div>
               </div>
+
+              {editing === d.id && data.preferences.developerMode && (
+                <DocumentDebugger
+                  layout={null}
+                  blueprint={
+                    data.courseBlueprints?.find(
+                      (b) => b.documentId === d.id || b.id === d.blueprintId,
+                    ) ?? null
+                  }
+                />
+              )}
 
               {editing === d.id && r && (
                 <div style={{ marginTop: "0.75rem" }}>

@@ -48,6 +48,8 @@ export function emptyAppData(): AppData {
     sourceCoverage: [],
     apiExplorationLog: [],
     searchIndex: [],
+    courseBlueprints: [],
+    documentMemories: [],
     sync: { ...DEFAULT_SYNC },
     preferences: { ...DEFAULT_PREFERENCES, courseColors: {} },
     pendingSync: false,

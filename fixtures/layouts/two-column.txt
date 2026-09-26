@@ -1,0 +1,11 @@
+﻿CIS*2520 Data Structures || Office Hours Tue 14:00
+Fall 2026 || Instructor: Dr. Jane Example
+
+Evaluation || Policies
+Assignment 1    10%    Week 3 || Late: 10%/day
+Assignment 2    10%    Week 6 || Integrity: UofG policy
+Quizzes best 5 of 7 15% ||
+Midterm         20%    Oct 20, 2026 ||
+Final Exam      25%    Exam period ||
+Labs            10%    weekly ||
+Participation   10%    ongoing ||

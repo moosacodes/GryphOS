@@ -1,4 +1,8 @@
-﻿import type {
+﻿/**
+ * Merge a parsed outline / CourseBlueprint into app data for one course.
+ * CourseLink live items reconcile into ONE canonical assessment later.
+ */
+import type {
   AppData,
   Assessment,
   CoursePolicy,
@@ -10,13 +14,19 @@
 import { DEFAULT_ITEM_STATE } from "@/domain/types";
 import { rulesFromOutlineHints } from "@/engines/rules";
 import { reconcileAssessments } from "@/reconcile/merge";
+import type { CourseBlueprint, DocumentMemoryEntry } from "@/documentIntelligence/types";
+import { materialLinksFromBlueprint } from "@/documentIntelligence/materialLinks";
+import { shouldRebuildFromRevision } from "@/documentIntelligence/memory";
 
-/** Merge a parsed outline document into app data for one course. */
 export function applyOutlineDocument(
   data: AppData,
   courseId: string,
   doc: ImportedDocument,
-  opts: { preferExistingManual?: boolean } = {},
+  opts: {
+    preferExistingManual?: boolean;
+    blueprint?: CourseBlueprint | null;
+    memory?: DocumentMemoryEntry | null;
+  } = {},
 ): AppData {
   const result = doc.parseResult;
   if (!result) return data;
@@ -31,9 +41,56 @@ export function applyOutlineDocument(
       existingManual,
     ].filter((d, i, arr) => arr.findIndex((x) => x.id === d.id) === i);
 
-    return { ...data, documents };
+    let next: AppData = { ...data, documents };
+    if (opts.blueprint) {
+      next = {
+        ...next,
+        courseBlueprints: [
+          ...(next.courseBlueprints ?? []).filter((b) => b.courseId !== courseId),
+          { ...opts.blueprint, courseId },
+        ],
+      };
+    }
+    if (opts.memory) {
+      next = {
+        ...next,
+        documentMemories: [
+          ...(next.documentMemories ?? []).filter((m) => m.documentId !== (opts.memory?.documentId ?? "")),
+          ...(opts.memory ? [opts.memory] : []),
+        ],
+      };
+    }
+    return next;
   }
 
+  // Skip semantic rebuild if memory says metadata-only
+  if (opts.memory && !shouldRebuildFromRevision(opts.memory) && opts.memory.changeKind === "metadata_only") {
+    const documents = [
+      ...data.documents.filter(
+        (d) => !(d.courseId === courseId && (d.id.startsWith("auto:") || d.id === doc.id)),
+      ),
+      doc,
+    ];
+    return {
+      ...data,
+      documents,
+      documentMemories: [
+        ...(data.documentMemories ?? []).filter((m) => m.documentId !== opts.memory!.documentId),
+        opts.memory,
+      ],
+      courses: data.courses.map((c) =>
+        c.id === courseId
+          ? {
+              ...c,
+              outlineDocumentId: doc.id,
+              outlineStatusDetail: `Outline unchanged semantically (${opts.memory?.notes ?? "metadata only"})`,
+            }
+          : c,
+      ),
+    };
+  }
+
+  const bp = opts.blueprint;
   const courses = data.courses.map((c) =>
     c.id === courseId
       ? {
@@ -45,7 +102,10 @@ export function applyOutlineDocument(
               : ("found" as const),
           outlineStatusDetail:
             result.assessments.length > 0
-              ? `Outline parsed (${result.assessments.length} assessments)`
+              ? `Outline understood (${result.assessments.length} assessments` +
+                (bp ? `, quality=${bp.quality.score.toFixed(2)}` : "") +
+                (result.extractionIncomplete ? ", incomplete" : "") +
+                ")"
               : "Outline document applied",
           instructorNames:
             result.instructors.length > 0
@@ -79,47 +139,53 @@ export function applyOutlineDocument(
     ),
   ];
 
-  const outlineAssessments: Assessment[] = result.assessments.map((oa, i) => ({
-    id: `outline:${courseId}:${i}:${oa.title.toLowerCase().replace(/\s+/g, "-")}`,
-    courseId,
-    title: oa.title,
-    type: oa.type,
-    due: { certainty: oa.certainty, iso: oa.dueIso, label: oa.dueLabel },
-    start: { certainty: "unknown" as const, iso: null, label: null },
-    end: { certainty: "unknown" as const, iso: null, label: null },
-    weightPercent: oa.weightPercent,
-    pointsPossible: null,
-    pointsEarned: null,
-    submissionState: "unknown" as const,
-    submittedAt: null,
-    gradeDisplay: null,
-    url: null,
-    notes: oa.sourceSnippet ?? null,
-    categoryId: oa.category ? `gcat:${courseId}:${oa.category}` : null,
-    isBonus: false,
-    attemptNumber: null,
-    state: { ...DEFAULT_ITEM_STATE },
-    sourceRecords: [],
-    fieldProvenance: {
-      weightPercent: {
-        value: oa.weightPercent,
-        sourceType: "course_outline",
-        sourceId: doc.id,
-        confidence: oa.confidence,
-        retrievedAt: doc.importedAt,
+  const outlineAssessments: Assessment[] = result.assessments.map((oa, i) => {
+    const citeBits = [
+      oa.sourcePage != null ? `p.${oa.sourcePage}` : null,
+      oa.sourceSnippet,
+    ].filter(Boolean);
+    return {
+      id: `outline:${courseId}:${i}:${oa.title.toLowerCase().replace(/\s+/g, "-")}`,
+      courseId,
+      title: oa.title,
+      type: oa.type,
+      due: { certainty: oa.certainty, iso: oa.dueIso, label: oa.dueLabel },
+      start: { certainty: "unknown" as const, iso: null, label: null },
+      end: { certainty: "unknown" as const, iso: null, label: null },
+      weightPercent: oa.weightPercent,
+      pointsPossible: null,
+      pointsEarned: null,
+      submissionState: "unknown" as const,
+      submittedAt: null,
+      gradeDisplay: null,
+      url: null,
+      notes: citeBits.length ? citeBits.join(" — ") : oa.sourceSnippet ?? null,
+      categoryId: oa.category ? `gcat:${courseId}:${oa.category}` : null,
+      isBonus: false,
+      attemptNumber: oa.instanceIndex ?? null,
+      state: { ...DEFAULT_ITEM_STATE },
+      sourceRecords: [],
+      fieldProvenance: {
+        weightPercent: {
+          value: oa.weightPercent,
+          sourceType: "course_outline",
+          sourceId: doc.id,
+          confidence: oa.confidence,
+          retrievedAt: doc.importedAt,
+        },
+        due: {
+          value: { certainty: oa.certainty, iso: oa.dueIso, label: oa.dueLabel },
+          sourceType: "course_outline",
+          sourceId: doc.id,
+          confidence: oa.confidence,
+          retrievedAt: doc.importedAt,
+        },
       },
-      due: {
-        value: { certainty: oa.certainty, iso: oa.dueIso, label: oa.dueLabel },
-        sourceType: "course_outline",
-        sourceId: doc.id,
-        confidence: oa.confidence,
-        retrievedAt: doc.importedAt,
-      },
-    },
-    conflictIds: [],
-    manualOverrides: {},
-    updatedAt: new Date().toISOString(),
-  }));
+      conflictIds: [],
+      manualOverrides: {},
+      updatedAt: new Date().toISOString(),
+    };
+  });
 
   const withoutOldOutline = data.assessments.filter(
     (a) => !(a.courseId === courseId && a.id.startsWith("outline:")),
@@ -179,6 +245,13 @@ export function applyOutlineDocument(
     doc,
   ];
 
+  const titleToId = new Map(
+    outlineAssessments.map((a) => [a.title.toLowerCase(), a.id] as const),
+  );
+  const materialLinks = bp
+    ? materialLinksFromBlueprint({ ...bp, courseId }, titleToId)
+    : [];
+
   return {
     ...data,
     courses,
@@ -193,5 +266,19 @@ export function applyOutlineDocument(
     resources,
     gradeCategories,
     academicRules,
+    courseBlueprints: [
+      ...(data.courseBlueprints ?? []).filter((b) => b.courseId !== courseId),
+      ...(bp ? [{ ...bp, courseId }] : []),
+    ],
+    documentMemories: [
+      ...(data.documentMemories ?? []).filter((m) => m.courseId !== courseId || (opts.memory && m.documentId !== opts.memory.documentId)),
+      ...(opts.memory ? [opts.memory] : []),
+    ],
+    entityLinks: [
+      ...(data.entityLinks ?? []).filter(
+        (l) => !l.id.includes(`:${courseId}:`) || !l.id.startsWith("elink:CONTAINS:schedule:"),
+      ),
+      ...materialLinks,
+    ],
   };
 }

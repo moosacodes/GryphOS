@@ -11,6 +11,15 @@ function ensureState(s?: Partial<AcademicItemState> | null): AcademicItemState {
 }
 
 const migrations: Record<number, Migration> = {
+  5: (data) => ({
+    ...data,
+    courseBlueprints: data.courseBlueprints ?? [],
+    documentMemories: data.documentMemories ?? [],
+    preferences: {
+      ...data.preferences,
+      documentVisionOptIn: data.preferences?.documentVisionOptIn ?? false,
+    },
+  }),
   4: (data) => ({
     ...data,
     discussionForums: data.discussionForums ?? [],
@@ -197,6 +206,7 @@ export function migrate(raw: unknown): AppData {
     ...data.preferences,
     lastCheckedAt: data.preferences?.lastCheckedAt ?? null,
     developerMode: data.preferences?.developerMode ?? false,
+    documentVisionOptIn: data.preferences?.documentVisionOptIn ?? false,
     notifications: data.preferences?.notifications ?? {
       enabled: true,
       dueTomorrow: true,
@@ -223,6 +233,8 @@ export function migrate(raw: unknown): AppData {
   data.sourceCoverage = data.sourceCoverage ?? [];
   data.apiExplorationLog = data.apiExplorationLog ?? [];
   data.searchIndex = data.searchIndex ?? [];
+  data.courseBlueprints = data.courseBlueprints ?? [];
+  data.documentMemories = data.documentMemories ?? [];
   data.academicRules = (data.academicRules ?? []).map((r) => ensureTypedRule(r as never));
   data.announcements = (data.announcements ?? []).map((n) => ({
     ...n,

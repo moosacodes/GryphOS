@@ -10,8 +10,9 @@
  * - Overview: /overview (+ /overview/attachment)
  * - News posts mentioning outline/grading (text only)
  */
-import { parseOutlineText } from "@/adapters/outline/parse";
+import { parseOutlineBuffer } from "@/adapters/outline";
 import { extractPdfDocument, extractPdfText } from "@/adapters/outline/pdf";
+import { understandPlainText } from "@/documentIntelligence/pipeline";
 import { COURSELINK_ORIGIN } from "@/domain/constants";
 import type {
   Course,
@@ -43,6 +44,9 @@ export interface OutlineDiscoveryHit {
   status: OutlineDiscoveryStatus;
   statusDetail: string;
   candidatesTried: number;
+  blueprint?: import("@/documentIntelligence/types").CourseBlueprint | null;
+  memory?: import("@/documentIntelligence/types").DocumentMemoryEntry | null;
+  layout?: import("@/documentIntelligence/types").DocumentLayout | null;
 }
 
 export interface FlatTopic {
@@ -287,6 +291,21 @@ function buildDoc(
   };
 }
 
+
+/** Score extracted text body — outlines carry weights / evaluation language. */
+export function scoreOutlineContents(text: string): number {
+  const t = text.toLowerCase();
+  let score = 0;
+  if (/\b(evaluation|grading|assessment|marking scheme|grade breakdown)\b/.test(t)) score += 25;
+  if ((t.match(/\d{1,3}\s*%/g) ?? []).length >= 3) score += 30;
+  if (/\b(mid[- ]?term|final\s+exam)\b/.test(t)) score += 15;
+  if (/\b(instructor|professor)\b/.test(t)) score += 10;
+  if (/\b(best\s*\d+|drop\s*(the\s+)?lowest)\b/.test(t)) score += 12;
+  if (/\b(syllabus|course\s*outline)\b/.test(t)) score += 10;
+  if (/\blecture\s*\d+|assignment\s*solution|answer\s*key\b/.test(t)) score -= 20;
+  return score;
+}
+
 export async function discoverCourseOutline(
   course: Course,
   le: string,
@@ -340,26 +359,38 @@ export async function discoverCourseOutline(
 
     if (!file || file.buffer.byteLength === 0) continue;
 
-    const text = await materializeText(
+    const understood = await parseOutlineBuffer(
       file.buffer,
-      file.contentType,
       file.filename || cand.title,
+      file.contentType,
+      { courseId: course.id, documentId: `auto:${course.id}:topic:${cand.id ?? "url"}` },
     );
+    const text = understood.text;
     if (!text || text.trim().length < 80) continue;
 
-    const parseResult = parseOutlineText(text);
-    const strong = looksLikeOutline(parseResult, cand.score);
+    const contentScore = scoreOutlineContents(text);
+    const parseResult = understood.result;
+    const combinedScore = cand.score + Math.min(40, contentScore);
+    const strong = looksLikeOutline(parseResult, combinedScore);
     // Keep high-scoring named files even if parse is weak (semester planning)
-    if (!strong && cand.score < 55) continue;
+    if (!strong && combinedScore < 55) continue;
 
-    const document = buildDoc(
-      course,
-      `topic:${cand.id ?? "url"}`,
-      file.filename || cand.title || "Course outline",
-      file.contentType,
-      text,
-      parseResult,
-    );
+    const document = {
+      ...buildDoc(
+        course,
+        `topic:${cand.id ?? "url"}`,
+        file.filename || cand.title || "Course outline",
+        file.contentType,
+        text,
+        parseResult,
+      ),
+      blueprintId: understood.blueprint?.id ?? null,
+      contentHash: understood.blueprint?.contentHash ?? null,
+      extractionQuality: understood.blueprint?.quality.score ?? null,
+      layoutSummary: understood.blueprint?.layoutSummary
+        ? { ...understood.blueprint.layoutSummary }
+        : null,
+    };
 
     const parsedWell =
       parseResult.assessments.length > 0 || parseResult.confidence >= 0.45;
@@ -367,12 +398,15 @@ export async function discoverCourseOutline(
     return {
       document,
       parseResult,
-      score: cand.score,
+      score: combinedScore,
       status: parsedWell ? "parsed" : "found",
       statusDetail: parsedWell
-        ? `Outline “${document.filename}” parsed (${parseResult.assessments.length} assessment row(s))`
+        ? `Outline “${document.filename}” understood (${parseResult.assessments.length} assessment(s), quality=${(understood.blueprint?.quality.score ?? parseResult.confidence).toFixed(2)})`
         : `Outline “${document.filename}” found; limited structured parse`,
       candidatesTried: tried,
+      blueprint: understood.blueprint,
+      memory: understood.memory,
+      layout: understood.layout,
     };
   }
 
@@ -390,26 +424,45 @@ export async function discoverCourseOutline(
             att.filename || "Course Overview",
           );
           if (text && text.trim().length >= 80) {
-            const parseResult = parseOutlineText(text);
-            const document = buildDoc(
-              course,
-              "overview",
-              att.filename || "Course Overview Attachment",
-              att.contentType,
-              text,
-              parseResult,
-            );
+            const understood = understandPlainText(text, {
+              courseId: course.id,
+              documentId: `auto:${course.id}:overview`,
+              filename: att.filename || "Course Overview Attachment",
+              mimeType: att.contentType,
+            });
+            const parseResult = {
+              ...understood.blueprint.outlineParse,
+              extractionIncomplete: understood.blueprint.quality.incomplete,
+              qualityChecks: understood.blueprint.quality.checks,
+            };
+            const document = {
+              ...buildDoc(
+                course,
+                "overview",
+                att.filename || "Course Overview Attachment",
+                att.contentType,
+                text,
+                parseResult,
+              ),
+              blueprintId: understood.blueprint.id,
+              contentHash: understood.blueprint.contentHash,
+              extractionQuality: understood.blueprint.quality.score,
+              layoutSummary: { ...understood.blueprint.layoutSummary },
+            };
             const parsedWell =
               parseResult.assessments.length > 0 || parseResult.confidence >= 0.45;
             return {
               document,
               parseResult,
-              score: 70,
+              score: 70 + Math.min(20, scoreOutlineContents(text)),
               status: parsedWell ? "parsed" : "found",
               statusDetail: parsedWell
-                ? `Overview attachment parsed (${parseResult.assessments.length} assessments)`
+                ? `Overview attachment understood (${parseResult.assessments.length} assessments)`
                 : "Overview attachment found; limited structured parse",
               candidatesTried: tried,
+              blueprint: understood.blueprint,
+              memory: understood.memory,
+              layout: understood.layout,
             };
           }
         }
@@ -436,26 +489,45 @@ export async function discoverCourseOutline(
         /\b(%|weight|grading|evaluation)\b/i.test(plain))
     ) {
       tried += 1;
-      const parseResult = parseOutlineText(plain);
-      const document = buildDoc(
-        course,
-        "overview-html",
-        "Course Overview",
-        "text/html",
-        plain,
-        parseResult,
-      );
+      const understood = understandPlainText(plain, {
+        courseId: course.id,
+        documentId: `auto:${course.id}:overview-html`,
+        filename: "Course Overview",
+        mimeType: "text/html",
+      });
+      const parseResult = {
+        ...understood.blueprint.outlineParse,
+        extractionIncomplete: understood.blueprint.quality.incomplete,
+        qualityChecks: understood.blueprint.quality.checks,
+      };
+      const document = {
+        ...buildDoc(
+          course,
+          "overview-html",
+          "Course Overview",
+          "text/html",
+          plain,
+          parseResult,
+        ),
+        blueprintId: understood.blueprint.id,
+        contentHash: understood.blueprint.contentHash,
+        extractionQuality: understood.blueprint.quality.score,
+        layoutSummary: { ...understood.blueprint.layoutSummary },
+      };
       const parsedWell =
         parseResult.assessments.length > 0 || parseResult.confidence >= 0.4;
       return {
         document,
         parseResult,
-        score: 45,
+        score: 45 + Math.min(20, scoreOutlineContents(plain)),
         status: parsedWell ? "parsed" : "found",
         statusDetail: parsedWell
-          ? `Overview HTML parsed (${parseResult.assessments.length} assessments)`
+          ? `Overview HTML understood (${parseResult.assessments.length} assessments)`
           : "Overview HTML captured for planning",
         candidatesTried: tried,
+        blueprint: understood.blueprint,
+        memory: understood.memory,
+        layout: understood.layout,
       };
     }
   } catch (e) {
@@ -477,25 +549,40 @@ export async function discoverCourseOutline(
       if (plain.length < 100) continue;
       if (!OUTLINE_NAME.test(plain) && !/\bgrading\b.*%/i.test(plain)) continue;
       tried += 1;
-      const parseResult = parseOutlineText(plain);
+      const understood = understandPlainText(plain, {
+        courseId: course.id,
+        documentId: `auto:${course.id}:news:${item.Id}`,
+        filename: item.Title || "News (outline-related)",
+        mimeType: "text/html",
+      });
+      const parseResult = understood.blueprint.outlineParse;
       if (parseResult.assessments.length === 0 && parseResult.policies.length === 0) {
         continue;
       }
-      const document = buildDoc(
-        course,
-        `news:${item.Id}`,
-        item.Title || "News (outline-related)",
-        "text/html",
-        plain,
-        parseResult,
-      );
+      const document = {
+        ...buildDoc(
+          course,
+          `news:${item.Id}`,
+          item.Title || "News (outline-related)",
+          "text/html",
+          plain,
+          parseResult,
+        ),
+        blueprintId: understood.blueprint.id,
+        contentHash: understood.blueprint.contentHash,
+        extractionQuality: understood.blueprint.quality.score,
+        layoutSummary: { ...understood.blueprint.layoutSummary },
+      };
       return {
         document,
         parseResult,
-        score: 40,
+        score: 40 + Math.min(15, scoreOutlineContents(plain)),
         status: parseResult.assessments.length > 0 ? "parsed" : "found",
         statusDetail: `News post “${document.filename}” used as outline source`,
         candidatesTried: tried,
+        blueprint: understood.blueprint,
+        memory: understood.memory,
+        layout: understood.layout,
       };
     }
   } catch (e) {

@@ -133,6 +133,19 @@ export function SettingsPage({
           <label className="small" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
             <input
               type="checkbox"
+              checked={!!data.preferences.documentVisionOptIn}
+              onChange={(e) =>
+                void update((prev) => ({
+                  ...prev,
+                  preferences: { ...prev.preferences, documentVisionOptIn: e.target.checked },
+                }))
+              }
+            />
+            Allow optional document vision (explicit opt-in; never sends docs by default)
+          </label>
+          <label className="small" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+            <input
+              type="checkbox"
               checked={data.preferences.notifications?.enabled !== false}
               onChange={(e) =>
                 void update((prev) => ({

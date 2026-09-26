@@ -1,0 +1,20 @@
+﻿CIS*2430 — Object Oriented Programming
+Fall 2026
+Instructor: Dr. Alex Rivers
+Email: arivers@uoguelph.ca
+
+Lecture Schedule
+Mon/Wed/Fri 09:30-10:20 RICH 2520
+
+Lab sections — register for one lab; deadlines are relative to your lab.
+Labs are due approximately 8 days after the lab is introduced.
+
+Methods of Evaluation
+Assessment                 Weight     Due Date
+Assignments (3 x 15%)        45%      see CourseLink
+Labs (best 8 of 10)          15%      ~8 days after lab introduced
+Midterm                      15%      Week 7
+Final Exam                   25%      Exam period
+
+Late Policy
+10% per day late, max 2 days.

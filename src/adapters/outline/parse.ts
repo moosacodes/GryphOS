@@ -48,6 +48,16 @@ export function normalizeOutlineText(raw: string): string {
     .replace(/\ufb01/g, "fi")
     .replace(/\ufb02/g, "fl")
     .replace(/\u200b|\u200c|\u200d|\ufeff/g, "")
+    // Common OCR confusables in scanned academic PDFs
+    .replace(/[¡]/g, "i")
+    .replace(/ClS\*/g, "CIS*")
+    .replace(/\bFaII\b/g, "Fall")
+    .replace(/\blnstructor\b/gi, "Instructor")
+    .replace(/\bEvaIuation\b/gi, "Evaluation")
+    .replace(/\bEmaiI\b/gi, "Email")
+    .replace(/\bWe¡ght\b/gi, "Weight")
+    .replace(/\bM¡dterm\b/gi, "Midterm")
+    .replace(/\bF¡nal\b/gi, "Final")
     .split("\0")
     .join("");
 }

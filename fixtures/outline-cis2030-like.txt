@@ -1,0 +1,13 @@
+﻿CIS*2030 Discrete Structures in Computing I
+Fall 2026
+Instructor: Prof. Morgan Lee
+mlee@uoguelph.ca
+
+Evaluation
+Component              Weight   Due
+Quizzes (11, best 10)    20%    weekly
+Assignments (4)          20%    Weeks 3/5/8/11
+Midterm                  25%    October 22, 2026
+Final Exam               35%    Exam period
+
+Note: Best 10 of 11 quizzes count. Drop the lowest quiz.

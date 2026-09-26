@@ -272,6 +272,8 @@ export async function runSync(): Promise<void> {
           !!data.courses.find((c) => c.id === courseId)?.outlineDocumentId;
         data = applyOutlineDocument(data, courseId, hit.document, {
           preferExistingManual: hasManual,
+          blueprint: hit.blueprint ?? null,
+          memory: hit.memory ?? null,
         });
         data = setCourseOutlineStatus(data, courseId, hit.status, hit.statusDetail);
       }

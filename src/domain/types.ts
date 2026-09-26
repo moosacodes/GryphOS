@@ -7,6 +7,13 @@ export type { AuthorityClass, DeadlineSafety } from "./authority";
 export type { CourseContentModule, CourseContentItem, DocumentClass, LibraryResource } from "./content";
 export type { DiscussionForum, DiscussionTopicLocal, DiscussionPost, AuthorRole } from "./discussions";
 export type { CourseSourceCoverage, SourceCapability, SourceCapabilityStatus } from "./coverage";
+export type {
+  CourseBlueprint,
+  DocumentMemoryEntry,
+  DocumentLayout,
+  SourceCitation,
+  ExtractionQuality,
+} from "@/documentIntelligence/types";
 
 export type SourceType =
   | "courselink_course"
@@ -368,6 +375,16 @@ export interface ImportedDocument {
   textContent: string;
   parseResult: OutlineParseResult | null;
   parseError: string | null;
+  blueprintId?: string | null;
+  contentHash?: string | null;
+  extractionQuality?: number | null;
+  layoutSummary?: {
+    pageCount: number;
+    tableCount: number;
+    imageCount: number;
+    ocrPages: number;
+    extractionMethod: string;
+  } | null;
 }
 
 export interface OutlineAssessmentParsed {
@@ -380,6 +397,11 @@ export interface OutlineAssessmentParsed {
   confidence: number;
   category: string | null;
   sourceSnippet: string | null;
+  /** 1-based page when known */
+  sourcePage?: number | null;
+  instanceIndex?: number | null;
+  dueKind?: "exact" | "range" | "week" | "relative" | "tbd" | "unknown";
+  relativeRuleId?: string | null;
 }
 
 export interface OutlineGradingRule {
@@ -409,12 +431,15 @@ export interface OutlineParseResult {
     weightPercent: number | null;
     dropLowest: number;
     bestN: number | null;
+    promisedCount?: number | null;
   }>;
   gradingRules: OutlineGradingRule[];
   policies: Array<{ kind: CoursePolicy["kind"]; title: string; body: string }>;
   textbooks: string[];
   diagnostics: OutlineParseDiagnostic[];
   confidence: number;
+  extractionIncomplete?: boolean;
+  qualityChecks?: Array<{ id: string; ok: boolean; detail: string }>;
 }
 
 export interface SyncState {
@@ -455,6 +480,8 @@ export interface Preferences {
   notifications?: NotificationPrefs;
   /** Show provenance IDs / debug inspectors */
   developerMode?: boolean;
+  /** Explicit opt-in before any document bytes leave the device for vision */
+  documentVisionOptIn?: boolean;
 }
 
 
@@ -613,6 +640,8 @@ export interface AppData {
   sourceCoverage: import("./coverage").CourseSourceCoverage[];
   apiExplorationLog: ApiExplorationEntry[];
   searchIndex: SearchIndexEntry[];
+  courseBlueprints: import("@/documentIntelligence/types").CourseBlueprint[];
+  documentMemories: import("@/documentIntelligence/types").DocumentMemoryEntry[];
   sync: SyncState;
   preferences: Preferences;
   pendingSync: boolean;
@@ -634,6 +663,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     gradePosted: true,
   },
   developerMode: false,
+  documentVisionOptIn: false,
 };
 
 export const DEFAULT_SYNC: SyncState = {

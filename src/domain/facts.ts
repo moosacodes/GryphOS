@@ -86,7 +86,9 @@ export type EntityLinkKind =
   | "HAS_FEEDBACK"
   | "HAS_SUBMISSION"
   | "HAS_RUBRIC"
-  | "HAS_STARTER";
+  | "HAS_STARTER"
+  | "RELATES_TO"
+  | "PREPARES_FOR";
 
 export interface EntityLink {
   id: string;
