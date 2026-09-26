@@ -12,7 +12,7 @@ import type {
   Resource,
 } from "@/domain/types";
 import { DEFAULT_ITEM_STATE } from "@/domain/types";
-import { rulesFromOutlineHints } from "@/engines/rules";
+import { rulesFromOutlineHints, rulesFromBlueprint } from "@/engines/rules";
 import { reconcileAssessments } from "@/reconcile/merge";
 import type { CourseBlueprint, DocumentMemoryEntry } from "@/documentIntelligence/types";
 import { materialLinksFromBlueprint } from "@/documentIntelligence/materialLinks";
@@ -100,13 +100,22 @@ export function applyOutlineDocument(
             result.assessments.length > 0 || result.confidence >= 0.45
               ? ("parsed" as const)
               : ("found" as const),
-          outlineStatusDetail:
-            result.assessments.length > 0
-              ? `Outline understood (${result.assessments.length} assessments` +
-                (bp ? `, quality=${bp.quality.score.toFixed(2)}` : "") +
-                (result.extractionIncomplete ? ", incomplete" : "") +
-                ")"
-              : "Outline document applied",
+          outlineStatusDetail: (() => {
+            if (result.assessments.length === 0) return "Outline document applied (no assessments extracted)";
+            const bits = [
+              `Outline understood (${result.assessments.length} assessments`,
+              bp ? `quality=${bp.quality.score.toFixed(2)}` : null,
+              result.extractionIncomplete || bp?.quality.incomplete ? "incomplete" : null,
+              bp?.quality.secondPassApplied ? "second-pass" : null,
+            ].filter(Boolean);
+            let detail = bits.join(", ") + ")";
+            const contras = bp?.quality.contradictions ?? [];
+            if (contras.length) detail += ` · uncertain: ${contras.slice(0, 2).join("; ")}`;
+            if (bp?.quality.missingCategories?.length) {
+              detail += ` · missing: ${bp.quality.missingCategories.slice(0, 3).join(", ")}`;
+            }
+            return detail;
+          })(),
           instructorNames:
             result.instructors.length > 0
               ? result.instructors.map((i) => i.name)
@@ -231,11 +240,16 @@ export function applyOutlineDocument(
     })),
   ];
 
+  const fromHints = rulesFromOutlineHints(courseId, result.gradingRules ?? []);
+  const fromBp = bp ? rulesFromBlueprint(courseId, bp) : [];
+  // Prefer blueprint-derived typed rules; keep hint rules that don't collide by id
+  const bpIds = new Set(fromBp.map((r) => r.id));
   const academicRules = [
     ...data.academicRules.filter(
       (r) => r.courseId !== courseId || r.sourceType !== "course_outline",
     ),
-    ...rulesFromOutlineHints(courseId, result.gradingRules ?? []),
+    ...fromBp,
+    ...fromHints.filter((r) => !bpIds.has(r.id)),
   ];
 
   const documents = [

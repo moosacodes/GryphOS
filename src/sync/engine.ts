@@ -1,5 +1,5 @@
 ﻿/**
- * Synchronization engine: CourseLink → normalize â†’ reconcile â†’ local storage.
+ * Synchronization engine: CourseLink → normalize → reconcile â†’ local storage.
  * Adapted from dawhatnow/gryphCal sync patterns (MIT).
  */
 import {
@@ -118,6 +118,49 @@ function mergeOutlineAssessments(
     updatedAt: new Date().toISOString(),
   }));
   return [...existing, ...fromOutline];
+}
+
+
+/** Prefer CourseLink grade categories; fill missing weights/bestN from outline blueprint cats. */
+function mergeGradeCategoriesForSync(
+  selectedIds: string[],
+  fromCourseLink: GradeCategory[],
+  fromData: GradeCategory[],
+): GradeCategory[] {
+  const out: GradeCategory[] = [];
+  for (const courseId of selectedIds) {
+    const cl = fromCourseLink.filter((g) => g.courseId === courseId);
+    const outline = fromData.filter(
+      (g) => g.courseId === courseId && g.id.startsWith("gcat:"),
+    );
+    if (cl.length === 0) {
+      out.push(...outline);
+      continue;
+    }
+    out.push(
+      ...cl.map((c) => {
+        const match = outline.find(
+          (o) => o.name.toLowerCase() === c.name.toLowerCase(),
+        );
+        if (!match) return c;
+        return {
+          ...c,
+          weightPercent: c.weightPercent ?? match.weightPercent,
+          dropLowest: c.dropLowest || match.dropLowest,
+          bestN: c.bestN ?? match.bestN,
+          gradeCapPercent: c.gradeCapPercent ?? match.gradeCapPercent,
+          thresholdPercent: c.thresholdPercent ?? match.thresholdPercent,
+        };
+      }),
+    );
+    // Outline-only categories (e.g. not mirrored in Brightspace gradebook yet)
+    for (const o of outline) {
+      if (!cl.some((c) => c.name.toLowerCase() === o.name.toLowerCase())) {
+        out.push(o);
+      }
+    }
+  }
+  return out;
 }
 
 function setCourseOutlineStatus(
@@ -269,7 +312,6 @@ export async function runSync(): Promise<void> {
 
       const courseId = selected[i].id;
       const hit = r.outline;
-      data = setCourseOutlineStatus(data, courseId, hit.status, hit.statusDetail);
       outlineSummaries.push(`${selected[i].code}: ${hit.status}`);
 
       if (hit.document) {
@@ -285,6 +327,17 @@ export async function runSync(): Promise<void> {
           blueprint: hit.blueprint ?? null,
           memory: hit.memory ?? null,
         });
+        // applyOutline owns outlineStatus/detail — do not clobber with discovery hit.
+        // Surface blocked-download uncertainty only when preferExistingManual skipped apply.
+        if (hasManual && hit.status === "blocked") {
+          data = setCourseOutlineStatus(
+            data,
+            courseId,
+            "blocked",
+            hit.statusDetail ?? "Outline download blocked; using manual import",
+          );
+        }
+      } else {
         data = setCourseOutlineStatus(data, courseId, hit.status, hit.statusDetail);
       }
     });
@@ -480,7 +533,7 @@ export async function runSync(): Promise<void> {
       discussionPosts: [...preserve(before.discussionPosts), ...discussionPosts],
       quizAttempts: [...preserve(before.quizAttempts), ...quizAttempts],
       feedbackRecords: [...preserve(before.feedbackRecords), ...feedbackRecords],
-      gradeCategories: [...preserve(before.gradeCategories), ...gradeCategories],
+      gradeCategories: [...preserve(before.gradeCategories), ...mergeGradeCategoriesForSync(selected.map((c) => c.id), gradeCategories, data.gradeCategories ?? [])],
       gradeRecords: [...preserve(before.gradeRecords), ...gradeRecords],
       libraryResources: [...preserve(before.libraryResources), ...libraryResources],
       externalActivities: [...preserve(before.externalActivities), ...externalActivities],

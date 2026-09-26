@@ -354,6 +354,20 @@ export async function syncCourseDeep(
     35,
   );
 
+  // Link downloaded specs/labs into assessment notes (outline remains primary blueprint).
+  for (const lib of ingested.library) {
+    if (!lib.assessmentId || !lib.textContent || lib.textContent.length < 80) continue;
+    const idx = items.findIndex((a) => a.id === lib.assessmentId);
+    if (idx < 0) continue;
+    const a = items[idx]!;
+    if (a.notes && a.notes.length > 40) continue;
+    const snippet = lib.textContent.replace(/\s+/g, " ").trim().slice(0, 280);
+    items[idx] = {
+      ...a,
+      notes: `Material: ${lib.filename} — ${snippet}`,
+    };
+  }
+
   // Discussions (forums → topics → posts)
   const forumsRaw = await getDiscussionForums(le, course.orgUnitId, explore);
   const discussionForums = forumsRaw.filter((f) => !f.IsHidden).map((f) => mapForum(course.id, f));

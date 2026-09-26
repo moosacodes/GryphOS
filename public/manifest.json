@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "gryphOS",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "gryphOS \u2014 local CourseLink academic OS. Cinematic brief, command surface, living My Day. Brave / Opera GX / Chromium.",
   "permissions": [
     "storage",

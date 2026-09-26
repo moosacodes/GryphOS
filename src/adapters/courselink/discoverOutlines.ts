@@ -223,7 +223,11 @@ async function materializeText(
 
 async function fetchContentUrl(
   pathOrUrl: string,
-): Promise<{ buffer: ArrayBuffer; contentType: string; filename: string } | null> {
+): Promise<
+  | { buffer: ArrayBuffer; contentType: string; filename: string; blocked?: false }
+  | { buffer: null; contentType: string; filename: string; blocked: true; status: number }
+  | null
+> {
   try {
     const url = pathOrUrl.startsWith("http")
       ? pathOrUrl
@@ -232,6 +236,15 @@ async function fetchContentUrl(
         : `${COURSELINK_ORIGIN}/${pathOrUrl}`;
     if (new URL(url).origin !== COURSELINK_ORIGIN) return null;
     const res = await fetch(url, { credentials: "include", redirect: "follow" });
+    if (res.status === 401 || res.status === 403) {
+      return {
+        buffer: null,
+        contentType: res.headers.get("content-type") ?? "application/octet-stream",
+        filename: pathOrUrl.split("/").pop() ?? "download",
+        blocked: true,
+        status: res.status,
+      };
+    }
     if (!res.ok) return null;
     const contentType = res.headers.get("content-type") ?? "application/octet-stream";
     const cd = res.headers.get("content-disposition") ?? "";
@@ -330,9 +343,9 @@ export async function discoverCourseOutline(
       score:
         scoreOutlineCandidate(t.title, t.url, t.parentTitle) + (t.isFileLike ? 8 : 0),
     }))
-    .filter((x) => x.score >= 25)
+    .filter((x) => x.score >= 18)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 10);
+    .slice(0, 14);
 
   let tried = 0;
 
@@ -354,10 +367,20 @@ export async function discoverCourseOutline(
     }
 
     if (!file && cand.url) {
-      file = await fetchContentUrl(cand.url);
+      const fetched = await fetchContentUrl(cand.url);
+      if (fetched && "blocked" in fetched && fetched.blocked) {
+        sawForbidden = true;
+        lastBlocked = `Download blocked for "${cand.title}" (HTTP ${fetched.status}) — upload the PDF under Documents to apply the same blueprint path.`;
+      } else if (fetched && fetched.buffer) {
+        file = {
+          buffer: fetched.buffer,
+          contentType: fetched.contentType,
+          filename: fetched.filename,
+        };
+      }
     }
 
-    if (!file || file.buffer.byteLength === 0) continue;
+    if (!file || !file.buffer || file.buffer.byteLength === 0) continue;
 
     const understood = await parseOutlineBuffer(
       file.buffer,

@@ -122,18 +122,40 @@ export async function extractPdfLayout(
     });
 
     const needOcr = ocrGate.shouldOcr(draft.textDensity, spans.length, spans.reduce((s, x) => s + x.text.length, 0));
-    if ((needOcr || opts.renderPages) && typeof document !== "undefined") {
+    if (needOcr || opts.renderPages) {
       try {
         const scale = 1.5;
         const vp = page.getViewport({ scale });
-        const canvas = document.createElement("canvas");
-        canvas.width = vp.width;
-        canvas.height = vp.height;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          const task = page.render({ canvasContext: ctx, viewport: vp });
-          await task.promise;
-          renderDataUrl = canvas.toDataURL("image/png");
+        // Prefer DOM canvas; OffscreenCanvas for service-worker Sync (no `document`).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let canvas: any = null;
+        if (typeof document !== "undefined") {
+          canvas = document.createElement("canvas");
+        } else if (typeof OffscreenCanvas !== "undefined") {
+          canvas = new OffscreenCanvas(vp.width, vp.height);
+        }
+        if (canvas) {
+          canvas.width = vp.width;
+          canvas.height = vp.height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            const task = page.render({ canvasContext: ctx, viewport: vp });
+            await task.promise;
+            if (typeof canvas.toDataURL === "function") {
+              renderDataUrl = canvas.toDataURL("image/png");
+            } else if (typeof canvas.convertToBlob === "function") {
+              const blob = await canvas.convertToBlob({ type: "image/png" });
+              const buf = await blob.arrayBuffer();
+              const bytes = new Uint8Array(buf);
+              let bin = "";
+              for (let b = 0; b < bytes.length; b++) bin += String.fromCharCode(bytes[b]!);
+              renderDataUrl = `data:image/png;base64,${btoa(bin)}`;
+            }
+          }
+        } else if (needOcr) {
+          warnings.push(
+            `Page ${i}: no canvas — OCR skipped; upload outline under Documents for full scan OCR`,
+          );
         }
       } catch {
         warnings.push(`Page ${i}: canvas render unavailable`);

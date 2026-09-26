@@ -12,6 +12,7 @@ import {
   extractRelativeDeadlineRules,
   resolveRelativeCandidate,
   scoreExtraction,
+  secondPassBlueprint,
   reconstructTables,
   buildPageLayout,
   assembleDocumentLayout,
@@ -358,5 +359,135 @@ describe("quality self-check", () => {
     });
     expect(q.checks.find((c) => c.id === "weights_near_100")?.ok).toBe(false);
     expect(q.incomplete).toBe(true);
+  });
+});
+
+
+describe("contradiction self-check triggers second pass", () => {
+  it("pads quizzes when promised 11 but only 9 found", () => {
+    const partial = understandPlainText(
+      [
+        "CIS*9999 Test Course",
+        "Instructor: Ada Lovelace",
+        "Evaluation",
+        "Quizzes (best 10 of 11) 20%",
+        "Quiz 1  — Week 1",
+        "Quiz 2  — Week 2",
+        "Quiz 3  — Week 3",
+        "Quiz 4  — Week 4",
+        "Quiz 5  — Week 5",
+        "Quiz 6  — Week 6",
+        "Quiz 7  — Week 7",
+        "Quiz 8  — Week 8",
+        "Quiz 9  — Week 9",
+        // deliberately omit 10 and 11 as separate rows — category promises 11
+        "Midterm 30% Week 7",
+        "Final Exam 50% Exam period",
+      ].join("\n"),
+      { courseId: "c:selfcheck" },
+    ).blueprint;
+
+    // Force a broken state: exactly Quiz 1..9 under category Quizzes, promised 11
+    const cat = {
+      name: "Quizzes",
+      weightPercent: 20,
+      promisedCount: 11,
+      bestN: 10,
+      dropLowest: 1,
+      instanceWeight: 20 / 11,
+      citation: null as null,
+    };
+    const nine = Array.from({ length: 9 }, (_, i) => ({
+      title: `Quiz ${i + 1}`,
+      type: "quiz" as const,
+      weightPercent: 20 / 11,
+      index: i + 1,
+      categoryName: "Quizzes",
+      due: {
+        kind: "unknown" as const,
+        iso: null,
+        endIso: null,
+        label: null,
+        weekNumber: null,
+        relativeRuleId: null,
+      },
+      certainty: "unknown" as const,
+      confidence: 0.7,
+      citation: null,
+      sourceSnippet: null,
+    }));
+    const broken = {
+      ...partial,
+      categories: [cat],
+      instances: [
+        ...nine,
+        ...partial.instances.filter((i) => !/quiz/i.test(i.title)),
+      ],
+    };
+    expect(broken.instances.filter((i) => i.categoryName === "Quizzes")).toHaveLength(9);
+    const repaired = secondPassBlueprint(broken);
+    expect(repaired.quality.secondPassApplied).toBe(true);
+    const quizzes = repaired.instances.filter((i) => i.categoryName === "Quizzes");
+    expect(quizzes.length).toBe(11);
+    const promised = repaired.quality.checks.find((c) => c.id === "promised_Quizzes");
+    expect(promised?.ok).toBe(true);
+  });
+});
+
+describe("Sync merge uses outline blueprint assessments + rules", () => {
+  it("applyOutline instantiates assessments and academicRules from blueprint", () => {
+    let data = emptyAppData();
+    data = {
+      ...data,
+      courses: [
+        {
+          id: "c-sync",
+          orgUnitId: 42,
+          code: "CIS*2030",
+          title: "Structure",
+          semester: "F26",
+          startDate: null,
+          endDate: null,
+          color: "#C8102E",
+          selected: true,
+          instructorNames: [],
+          url: "https://courselink.uoguelph.ca",
+          outlineDocumentId: null,
+          outlineStatus: "not_checked",
+          outlineStatusDetail: null,
+          lectureSection: null,
+          labSection: null,
+          tutorialSection: null,
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    };
+    const { blueprint } = understandPlainText(fx("outline-cis2030-like.txt"), {
+      courseId: "c-sync",
+      documentId: "auto:c-sync:outline",
+    });
+    const doc = {
+      id: "auto:c-sync:outline",
+      courseId: "c-sync",
+      filename: "CIS2030_outline.pdf",
+      mimeType: "application/pdf",
+      importedAt: new Date().toISOString(),
+      textContent: fx("outline-cis2030-like.txt"),
+      parseResult: blueprint.outlineParse,
+      parseError: null,
+      blueprintId: blueprint.id,
+      contentHash: blueprint.contentHash,
+      extractionQuality: blueprint.quality.score,
+      layoutSummary: { ...blueprint.layoutSummary },
+    };
+    data = applyOutlineDocument(data, "c-sync", doc, { blueprint });
+    expect(data.assessments.filter((a) => a.id.startsWith("outline:")).length).toBeGreaterThanOrEqual(11);
+    expect(data.courseBlueprints.some((b) => b.courseId === "c-sync")).toBe(true);
+    expect(data.courses.find((c) => c.id === "c-sync")?.outlineStatus).toBe("parsed");
+    const rules = data.academicRules.filter((r) => r.courseId === "c-sync");
+    expect(rules.length).toBeGreaterThan(0);
+    // Simulate Sync final gradeCategories merge: CL empty → keep outline cats
+    const outlineCats = data.gradeCategories.filter((g) => g.courseId === "c-sync");
+    expect(outlineCats.length).toBeGreaterThan(0);
   });
 });

@@ -1,7 +1,10 @@
-﻿/**
+/**
  * Extraction quality score + self-check + contradiction second-pass.
  * Incomplete if major outline categories missing; never claims success on 4 regex hits.
+ * Second pass re-expands when promisedCount != found (e.g. 11 quizzes, 9 found).
  */
+import { expandInstances } from "./instances";
+import { inferAssessmentType } from "@/adapters/outline/parse";
 import type {
   BlueprintAssessmentInstance,
   BlueprintCategory,
@@ -25,7 +28,6 @@ export function scoreExtraction(input: {
   const contradictions: string[] = [];
 
   const catSum = input.categories.reduce((s, c) => s + (c.weightPercent ?? 0), 0);
-  // Prefer category weights when instances are expansions
   const totalWeight =
     catSum > 0
       ? catSum +
@@ -57,7 +59,7 @@ export function scoreExtraction(input: {
       });
       if (!ok) {
         contradictions.push(
-          `Category “${cat.name}” promised ${cat.promisedCount} instance(s), found ${found}`,
+          `Category "${cat.name}" promised ${cat.promisedCount} instance(s), found ${found}`,
         );
       }
     }
@@ -103,24 +105,20 @@ export function scoreExtraction(input: {
     (missing.includes("evaluation_table") && input.instances.length < 3) ||
     score < 0.45;
 
+  void MAJOR;
   return {
     score: Math.max(0, Math.min(1, score)),
     incomplete,
-    missingCategories: missing.filter((m) =>
-      MAJOR.some((x) => m.includes(x) || x.includes(m.split("_")[0]!)),
-    ).length
-      ? missing
-      : missing,
+    missingCategories: missing,
     checks,
     contradictions,
     secondPassApplied: false,
   };
 }
 
-/** Second pass: drop duplicate instances, prefer richer rows, flag conflicts. */
-export function secondPassBlueprint(bp: CourseBlueprint): CourseBlueprint {
-  const byKey = new Map<string, CourseBlueprint["instances"][0]>();
-  for (const inst of bp.instances) {
+function dedupeInstances(instances: BlueprintAssessmentInstance[]): BlueprintAssessmentInstance[] {
+  const byKey = new Map<string, BlueprintAssessmentInstance>();
+  for (const inst of instances) {
     const key = inst.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     const prev = byKey.get(key);
     if (!prev) {
@@ -130,19 +128,148 @@ export function secondPassBlueprint(bp: CourseBlueprint): CourseBlueprint {
     const richer =
       (inst.weightPercent != null && prev.weightPercent == null) ||
       (inst.due.iso && !prev.due.iso) ||
-      (inst.confidence > prev.confidence);
-    if (richer) byKey.set(key, { ...prev, ...inst, weightPercent: inst.weightPercent ?? prev.weightPercent });
+      inst.confidence > prev.confidence;
+    if (richer) {
+      byKey.set(key, {
+        ...prev,
+        ...inst,
+        weightPercent: inst.weightPercent ?? prev.weightPercent,
+      });
+    }
   }
-  const instances = [...byKey.values()];
+  return [...byKey.values()];
+}
+
+function instanceIndex(title: string): number | null {
+  const m = title.match(/\b(?:quiz|lab|assignment|project|homework|test|a)\s*#?\s*(\d+)\b/i);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Second pass: dedupe, then repair promisedCount gaps by synthesizing missing
+ * numbered instances from the category (e.g. 11 quizzes promised, 9 found).
+ * Never invents weights/dates beyond category-level facts already extracted.
+ */
+export function secondPassBlueprint(bp: CourseBlueprint): CourseBlueprint {
+  let instances = dedupeInstances(bp.instances);
+  const categories = bp.categories.map((c) => ({ ...c }));
+  const repairNotes: string[] = [];
+
+  for (const cat of categories) {
+    if (cat.promisedCount == null || cat.promisedCount < 2) continue;
+    const belonging = instances.filter(
+      (i) => i.categoryName?.toLowerCase() === cat.name.toLowerCase(),
+    );
+    const found = belonging.length;
+    if (found === cat.promisedCount) continue;
+
+    if (found === 0) {
+      const type = inferAssessmentType(cat.name);
+      const titleHint =
+        cat.bestN != null
+          ? `${cat.name} (best ${cat.bestN} of ${cat.promisedCount})`
+          : `${cat.name} (${cat.promisedCount})`;
+      const expanded = expandInstances({
+        title: titleHint,
+        type,
+        weightPercent: cat.weightPercent,
+        dueLabel: null,
+        dueIso: null,
+        certainty: "unknown",
+        confidence: 0.55,
+        citation: cat.citation,
+        sourceSnippet: `second-pass expand ${cat.name}`,
+      });
+      if (expanded.instances.length) {
+        instances = [
+          ...instances.filter((i) => i.categoryName?.toLowerCase() !== cat.name.toLowerCase()),
+          ...expanded.instances.map((inst) => ({
+            ...inst,
+            categoryName: cat.name,
+            weightPercent: inst.weightPercent ?? cat.instanceWeight,
+          })),
+        ];
+        repairNotes.push(`Expanded ${cat.name} → ${expanded.instances.length} instances`);
+      }
+      continue;
+    }
+
+    if (found < cat.promisedCount) {
+      const type = belonging[0]?.type ?? inferAssessmentType(cat.name);
+      const base =
+        belonging[0]?.title.replace(/\s*\d+\s*$/, "").trim() ||
+        cat.name.replace(/s\b/i, "").trim() ||
+        "Item";
+      const haveIdx = new Set(
+        belonging
+          .map((i) => i.index ?? instanceIndex(i.title))
+          .filter((n): n is number => n != null),
+      );
+      const per =
+        cat.instanceWeight ??
+        belonging.find((i) => i.weightPercent != null)?.weightPercent ??
+        (cat.weightPercent != null
+          ? Math.round((cat.weightPercent / cat.promisedCount) * 1000) / 1000
+          : null);
+      for (let n = 1; n <= cat.promisedCount; n++) {
+        if (haveIdx.has(n)) continue;
+        instances.push({
+          title: `${base} ${n}`,
+          type,
+          weightPercent: per,
+          index: n,
+          categoryName: cat.name,
+          due: {
+            kind: "unknown",
+            iso: null,
+            endIso: null,
+            label: null,
+            weekNumber: null,
+            relativeRuleId: null,
+          },
+          certainty: "unknown",
+          confidence: 0.5,
+          citation: cat.citation,
+          sourceSnippet: `second-pass pad: promised ${cat.promisedCount}, had ${found}`,
+        });
+        haveIdx.add(n);
+      }
+      repairNotes.push(`Padded ${cat.name}: promised ${cat.promisedCount}, had ${found}`);
+    } else if (found > cat.promisedCount) {
+      const sorted = [...belonging].sort((a, b) => {
+        const ai = a.index ?? instanceIndex(a.title) ?? 999;
+        const bi = b.index ?? instanceIndex(b.title) ?? 999;
+        return ai - bi;
+      });
+      const keep = new Set(sorted.slice(0, cat.promisedCount).map((i) => i.title.toLowerCase()));
+      instances = instances.filter(
+        (i) =>
+          i.categoryName?.toLowerCase() !== cat.name.toLowerCase() ||
+          keep.has(i.title.toLowerCase()),
+      );
+      repairNotes.push(`Trimmed ${cat.name}: promised ${cat.promisedCount}, had ${found}`);
+    }
+  }
+
+  instances = dedupeInstances(instances);
+
   const quality = scoreExtraction({
     courseCode: bp.courseCode ?? null,
     instructors: bp.people.filter((p) => p.role === "instructor").length,
     instances,
-    categories: bp.categories,
+    categories,
     tableCount: bp.layoutSummary.tableCount,
     hasSchedule: bp.scheduleEntities.length > 0,
     policies: bp.policies.length,
   });
   quality.secondPassApplied = true;
-  return { ...bp, instances, quality };
+  if (repairNotes.length) {
+    quality.checks.push({
+      id: "second_pass_repair",
+      ok: quality.contradictions.length === 0,
+      detail: repairNotes.join("; "),
+    });
+  }
+
+  return { ...bp, instances, categories, quality };
 }

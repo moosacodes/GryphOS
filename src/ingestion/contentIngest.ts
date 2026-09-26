@@ -2,6 +2,7 @@
  * Deep content ingestion: hierarchy fields, file download, text extract, hash versioning.
  */
 import { getContentTopicFile } from "@/adapters/courselink/api";
+import { extractPdfText } from "@/adapters/outline/pdf";
 import type { RawContentModule, RawContentTopic } from "@/adapters/courselink/raw";
 import { COURSELINK_ORIGIN } from "@/domain/constants";
 import {
@@ -143,16 +144,35 @@ export function buildDeepContentTree(
   return { modules: outMods, items: outItems };
 }
 
-function decodeText(buffer: ArrayBuffer, contentType: string): string | null {
-  if (SKIP_MIME.test(contentType)) return null;
-  if (!TEXTISH.test(contentType) && buffer.byteLength > 0) {
-    // Still try UTF-8 for unknown small files
-    if (buffer.byteLength > 512_000) return null;
+function matchAssessmentId(title: string, assessments: Assessment[]): string | null {
+  const t = title.toLowerCase();
+  for (const a of assessments) {
+    const at = a.title.toLowerCase();
+    if (t.includes(at) || at.includes(t.slice(0, Math.min(24, t.length)))) return a.id;
   }
-  try {
-    const bytes = new Uint8Array(buffer);
-    // PDF binary — leave marker; full PDF parse happens elsewhere when pdfjs available
-    if (contentType.includes("pdf") || (bytes[0] === 0x25 && bytes[1] === 0x50)) {
+  const m = t.match(/\b(assignment|lab|quiz|project|homework|a)\s*#?\s*(\d+)\b/);
+  if (m) {
+    const re = new RegExp(`\\b${m[1]}\\s*#?\\s*${m[2]}\\b`, "i");
+    const hit = assessments.find((a) => re.test(a.title));
+    if (hit) return hit.id;
+  }
+  return null;
+}
+
+async function extractContentText(buffer: ArrayBuffer, contentType: string): Promise<string | null> {
+  if (SKIP_MIME.test(contentType)) return null;
+  const bytes = new Uint8Array(buffer);
+  const isPdf =
+    contentType.includes("pdf") || (bytes.length >= 2 && bytes[0] === 0x25 && bytes[1] === 0x50);
+  if (isPdf) {
+    try {
+      const text = await extractPdfText(buffer);
+      const trimmed = text.replace(/\s+/g, " ").trim();
+      if (trimmed.length > 40) return trimmed.slice(0, MAX_TEXT_CHARS);
+    } catch {
+      /* fall through to latin1 scrape */
+    }
+    try {
       const asLatin = new TextDecoder("latin1").decode(bytes.slice(0, Math.min(bytes.length, 2_000_000)));
       const streams = asLatin.match(/BT[\s\S]{0,500}?ET/g) ?? [];
       if (streams.length) {
@@ -163,8 +183,13 @@ function decodeText(buffer: ArrayBuffer, contentType: string): string | null {
           .trim();
         if (rough.length > 40) return rough.slice(0, MAX_TEXT_CHARS);
       }
-      return `[PDF binary ${buffer.byteLength} bytes — open via CourseLink for full text; outline parser may extract when imported]`;
+    } catch {
+      /* ignore */
     }
+    return null; // scanned / encrypted — caller keeps metadata; outline path uses OCR when available
+  }
+  if (!TEXTISH.test(contentType) && buffer.byteLength > 512_000) return null;
+  try {
     let text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
     if (/html/i.test(contentType) || /<html/i.test(text.slice(0, 200))) {
       text = text.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ");
@@ -234,7 +259,7 @@ export async function ingestContentFiles(
           id: `lib:${item.id}`,
           courseId,
           contentItemId: item.id,
-          assessmentId: null,
+          assessmentId: matchAssessmentId(item.title, assessments),
           filename: item.title,
           mimeType: "text/plain",
           documentClass: item.documentClass,
@@ -298,7 +323,7 @@ export async function ingestContentFiles(
         outItems.push({ ...next, mimeType: file.contentType });
         continue;
       }
-      const text = decodeText(file.buffer, file.contentType);
+      const text = await extractContentText(file.buffer, file.contentType);
       if (!text) {
         outItems.push({ ...next, mimeType: file.contentType });
         continue;
@@ -335,11 +360,12 @@ export async function ingestContentFiles(
           });
         }
         next.contentHash = hash;
+        const linkedAssessmentId = matchAssessmentId(item.title, assessments);
         const lr: LibraryResource = {
           id: `lib:${item.id}:${hash.slice(0, 12)}`,
           courseId,
           contentItemId: item.id,
-          assessmentId: null,
+          assessmentId: linkedAssessmentId,
           filename: file.filename || item.title,
           mimeType: file.contentType,
           documentClass: next.documentClass,

@@ -367,3 +367,109 @@ export function rulesFromOutlineHints(
     }),
   );
 }
+
+/** Convert CourseBlueprint relative deadlines + category bestN/drop into AcademicRules. */
+export function rulesFromBlueprint(
+  courseId: string,
+  bp: {
+    categories: Array<{
+      name: string;
+      bestN: number | null;
+      dropLowest: number;
+      promisedCount: number | null;
+    }>;
+    relativeDeadlines: Array<{
+      id: string;
+      assessmentTitleHint: string;
+      offsetDays: number;
+      approx: boolean;
+      anchorKind: string;
+      raw: string;
+    }>;
+  },
+): AcademicRule[] {
+  const out: AcademicRule[] = [];
+  for (const cat of bp.categories) {
+    const low = cat.name.toLowerCase();
+    const types = low.includes("quiz")
+      ? (["quiz"] as const)
+      : low.includes("lab")
+        ? (["lab"] as const)
+        : low.includes("project")
+          ? (["project"] as const)
+          : (["assignment"] as const);
+    if (cat.bestN != null && cat.bestN > 0) {
+      out.push(
+        ensureTypedRule({
+          id: `rule:${courseId}:BestN:${cat.name}`,
+          courseId,
+          kind: "BestN",
+          label: `${cat.name}: best ${cat.bestN}${cat.promisedCount != null ? ` of ${cat.promisedCount}` : ""}`,
+          params: {
+            n: cat.bestN,
+            of: cat.promisedCount,
+            applyToTypes: [...types],
+            category: cat.name,
+          },
+          sourceType: "course_outline",
+          confidence: 0.85,
+        }),
+      );
+    }
+    if (cat.dropLowest > 0) {
+      out.push(
+        ensureTypedRule({
+          id: `rule:${courseId}:DropLowest:${cat.name}`,
+          courseId,
+          kind: "DropLowest",
+          label: `${cat.name}: drop lowest ${cat.dropLowest}`,
+          params: {
+            n: cat.dropLowest,
+            applyToTypes: [...types],
+            category: cat.name,
+          },
+          sourceType: "course_outline",
+          confidence: 0.85,
+        }),
+      );
+    }
+  }
+  for (const r of bp.relativeDeadlines) {
+    const fromMeetingKind =
+      r.anchorKind.includes("lab")
+        ? "lab"
+        : r.anchorKind.includes("lecture")
+          ? "lecture"
+          : r.anchorKind.includes("tutorial")
+            ? "tutorial"
+            : "other";
+    const hint = r.assessmentTitleHint.toLowerCase();
+    const applyToTypes = hint.includes("lab")
+      ? ["lab"]
+      : hint.includes("quiz")
+        ? ["quiz"]
+        : hint.includes("assignment")
+          ? ["assignment"]
+          : ["lab", "assignment"];
+    const occ = r.assessmentTitleHint.match(/\d+/);
+    out.push(
+      ensureTypedRule({
+        id: `rule:${courseId}:RelativeDeadline:${r.id}`,
+        courseId,
+        kind: "RelativeDeadline",
+        label: r.raw.slice(0, 120) || `${r.offsetDays}d after ${fromMeetingKind}`,
+        params: {
+          fromMeetingKind,
+          dayOfWeek: null,
+          offsetDays: r.offsetDays,
+          dueTime: "23:59",
+          applyToTypes,
+          occurrenceIndex: occ ? Number(occ[0]) : null,
+        },
+        sourceType: "course_outline",
+        confidence: r.approx ? 0.6 : 0.75,
+      }),
+    );
+  }
+  return out;
+}
