@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Change detection — compare previous vs next assessment snapshots.
  */
 import type { Assessment, ChangeEvent } from "@/domain/types";
@@ -25,6 +25,8 @@ export function detectAssessmentChanges(
         createdAt: now,
         read: false,
         evidenceIds: [],
+        beforeValue: null,
+        afterValue: a.title,
       });
       continue;
     }
@@ -39,6 +41,8 @@ export function detectAssessmentChanges(
         createdAt: now,
         read: false,
         evidenceIds: [],
+        beforeValue: b.due.iso ?? b.due.label,
+        afterValue: a.due.iso ?? a.due.label,
       });
     }
     if (b.weightPercent !== a.weightPercent) {
@@ -52,6 +56,8 @@ export function detectAssessmentChanges(
         createdAt: now,
         read: false,
         evidenceIds: [],
+        beforeValue: b.weightPercent,
+        afterValue: a.weightPercent,
       });
     }
     if (
@@ -68,6 +74,8 @@ export function detectAssessmentChanges(
         createdAt: now,
         read: false,
         evidenceIds: [],
+        beforeValue: b.gradeDisplay ?? b.pointsEarned,
+        afterValue: a.gradeDisplay ?? a.pointsEarned,
       });
     }
   }
@@ -84,6 +92,8 @@ export function detectAssessmentChanges(
         createdAt: now,
         read: false,
         evidenceIds: [],
+        beforeValue: b.title,
+        afterValue: null,
       });
     }
   }

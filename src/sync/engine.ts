@@ -52,6 +52,9 @@ import { patternsFromLegacyMeetings, generateOccurrences, courseKeyFromCode } fr
 import { ensureTypedRule } from "@/domain/rules";
 import { DEFAULT_ITEM_STATE } from "@/domain/types";
 import { detectAssessmentChanges } from "./changes";
+import { buildContentTree } from "./contentTree";
+import type { CourseContentItem, CourseContentModule } from "@/domain/content";
+import { getQuizAttempts, getDiscussionForums } from "@/adapters/courselink/api.extras";
 import { applyOutlineDocument } from "./applyOutline";
 import { mapLimit } from "./concurrency";
 
@@ -80,6 +83,9 @@ async function syncCourse(course: Course, le: string): Promise<{
   announcements: Announcement[];
   outline: OutlineDiscoveryHit;
   failed: boolean;
+  contentModules: CourseContentModule[];
+  contentItems: CourseContentItem[];
+  discussionNotes: string[];
 }> {
   let failed = false;
   const markFailed = () => {
@@ -205,12 +211,44 @@ async function syncCourse(course: Course, le: string): Promise<{
     .map((n) => announcementFromNews(n, course))
     .filter((x): x is Announcement => x != null);
 
+  const contentBuilt = tocModules?.length
+    ? buildContentTree(course.id, course.orgUnitId, tocModules)
+    : { modules: [] as CourseContentModule[], items: [] as CourseContentItem[] };
+
+  // Explore quiz attempts when quizzes present (403 → empty; never fabricate).
+  for (const q of quizzes ?? []) {
+    const attempts = await safe(getQuizAttempts(le, course.orgUnitId, q.QuizId));
+    if (attempts && attempts.length > 0) {
+      const aid = items.find((a) => a.id.includes(`:quiz:${q.QuizId}`));
+      if (aid) {
+        const completed = attempts.filter((x) => x.Completed);
+        if (completed.length) {
+          aid.submissionState = "submitted";
+          aid.submittedAt = completed[completed.length - 1].Completed;
+          aid.attemptNumber = completed[completed.length - 1].AttemptNumber;
+          aid.state = {
+            ...aid.state,
+            submission: "submitted",
+            work: "completed",
+            availability: "available",
+          };
+        }
+      }
+    }
+  }
+
+  const forums = await safe(getDiscussionForums(le, course.orgUnitId));
+  const discussionNotes = (forums ?? []).slice(0, 20).map((f) => f.Name);
+
   return {
     assessments: items,
     sources,
     announcements,
     outline: outlineHit,
     failed,
+    contentModules: contentBuilt.modules,
+    contentItems: contentBuilt.items,
+    discussionNotes,
   };
 }
 
@@ -361,12 +399,16 @@ export async function runSync(): Promise<void> {
     const sources: SourceRecord[] = [];
     const announcements: Announcement[] = [];
     const outlineSummaries: string[] = [];
+    const contentModules: CourseContentModule[] = [];
+    const contentItems: CourseContentItem[] = [];
 
     results.forEach((r, i) => {
       if (r.failed) failedCodes.push(selected[i].code);
       assessments.push(...r.assessments);
       sources.push(...r.sources);
       announcements.push(...r.announcements);
+      contentModules.push(...(r.contentModules ?? []));
+      contentItems.push(...(r.contentItems ?? []));
 
       const courseId = selected[i].id;
       const hit = r.outline;
@@ -493,6 +535,14 @@ export async function runSync(): Promise<void> {
         ? `Outlines ? ${outlineSummaries.join("; ")}`
         : null;
 
+    // Preserve content for courses not in this sync selection
+    const preservedMods = (before.contentModules ?? []).filter(
+      (m) => !selected.some((c) => c.id === m.courseId),
+    );
+    const preservedItems = (before.contentItems ?? []).filter(
+      (m) => !selected.some((c) => c.id === m.courseId),
+    );
+
     data = {
       ...data,
       assessments: reconciled.assessments,
@@ -504,6 +554,8 @@ export async function runSync(): Promise<void> {
       announcements,
       academicDates,
       changes,
+      contentModules: [...preservedMods, ...contentModules],
+      contentItems: [...preservedItems, ...contentItems],
       sync: failedCodes.length
         ? {
             status: "error",

@@ -126,6 +126,25 @@ export function migrate(raw: unknown): AppData {
   data.meetingOccurrences = data.meetingOccurrences ?? [];
   data.contentModules = data.contentModules ?? [];
   data.contentItems = data.contentItems ?? [];
+  data.preferences = {
+    ...data.preferences,
+    lastCheckedAt: data.preferences?.lastCheckedAt ?? null,
+    developerMode: data.preferences?.developerMode ?? false,
+    notifications: data.preferences?.notifications ?? {
+      enabled: true,
+      dueTomorrow: true,
+      quizClosing: true,
+      midtermRoom: true,
+      deadlineChange: true,
+      gradePosted: true,
+    },
+  };
+  data.changes = (data.changes ?? []).map((c) => ({
+    ...c,
+    beforeValue: c.beforeValue,
+    afterValue: c.afterValue,
+  }));
+  data.contentItems = data.contentItems ?? [];
   data.calculationStates = data.calculationStates ?? [];
   data.academicRules = (data.academicRules ?? []).map((r) => ensureTypedRule(r as never));
   data.announcements = (data.announcements ?? []).map((n) => ({

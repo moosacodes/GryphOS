@@ -1,105 +1,312 @@
 import { Link, useParams } from "react-router-dom";
-import type { AppData } from "@/domain/types";
+import type { AppData, Assessment } from "@/domain/types";
+import { DEFAULT_ITEM_STATE } from "@/domain/types";
 import { deadlineSafetyFromAssessment } from "@/engines/deadlines";
 import { formatInToronto } from "@/domain/dates";
 import { summarizeCourseGrades } from "@/engines/grades";
+import { ensureTypedRule } from "@/domain/rules";
+import { classifyDocument } from "@/domain/content";
 
-export function AssessmentDetailPage({ data }: { data: AppData }) {
+function personalLabel(a: Assessment): string {
+  if (a.state?.missed) return "Missed";
+  if (a.state?.dropped) return "Dropped / excused";
+  if (a.submissionState === "submitted" || a.state?.work === "completed") return "Done";
+  if (a.state?.work === "in_progress") return "In progress";
+  if (a.state?.work === "not_started") return "Not started";
+  if (a.pointsEarned != null || a.gradeDisplay) return "Graded";
+  return "Unknown";
+}
+
+export function AssessmentDetailPage({
+  data,
+  update,
+}: {
+  data: AppData;
+  update?: (patch: Partial<AppData> | ((prev: AppData) => AppData)) => Promise<AppData>;
+}) {
   const { id } = useParams();
   const assessment = data.assessments.find((a) => a.id === decodeURIComponent(id ?? ""));
   if (!assessment) {
     return (
       <div>
         <p>Assessment not found.</p>
-        <Link to="/">Back</Link>
+        <Link to="/">Back to My Day</Link>
       </div>
     );
   }
+
   const course = data.courses.find((c) => c.id === assessment.courseId);
   const safety = deadlineSafetyFromAssessment(assessment);
-  const dueProv = assessment.fieldProvenance.due;
-  const occ = (data.meetingOccurrences ?? []).find((o) =>
-    String((dueProv?.value as { occurrenceId?: string } | undefined)?.occurrenceId ?? "").includes(o.id),
-  );
   const summary = course
     ? summarizeCourseGrades(
         course,
         data.assessments,
         data.gradeCategories,
         data.academicRules,
+        data.whatIfOverrides,
       )
     : null;
   const row = summary?.rows.find((r) => r.assessment.id === assessment.id);
 
+  const relatedContent = (data.contentItems ?? []).filter((ci) => {
+    if (ci.courseId !== assessment.courseId) return false;
+    const cls = ci.documentClass || classifyDocument(ci.title);
+    const titleHit = ci.title.toLowerCase().includes(assessment.title.toLowerCase().slice(0, 12));
+    return cls === "assignment_spec" || cls === "lab_handout" || titleHit;
+  });
+
+  const relatedAnns = data.announcements.filter(
+    (n) =>
+      n.courseId === assessment.courseId &&
+      (n.deadlineChangeSignal ||
+        n.title.toLowerCase().includes(assessment.title.toLowerCase().slice(0, 10)) ||
+        n.bodyText.toLowerCase().includes(assessment.title.toLowerCase().slice(0, 10))),
+  );
+
+  const rules = (data.academicRules ?? [])
+    .map(ensureTypedRule)
+    .filter((r) => r.courseId === assessment.courseId);
+
+  const history = (data.changes ?? []).filter((c) => c.entityId === assessment.id);
+  const conflicts = data.conflicts.filter((c) => c.entityId === assessment.id);
+  const checklist = (data.userTasks ?? []).filter(
+    (t) => t.courseId === assessment.courseId && t.title.toLowerCase().includes(assessment.title.toLowerCase().slice(0, 8)),
+  );
+
+  const setPersonal = async (mode: "not_started" | "in_progress" | "done" | "missed" | "excused") => {
+    if (!update) return;
+    await update((prev) => ({
+      ...prev,
+      assessments: prev.assessments.map((a) => {
+        if (a.id !== assessment.id) return a;
+        const state = { ...DEFAULT_ITEM_STATE, ...a.state, needsConfirmation: false, pastDueConfirmed: true };
+        if (mode === "not_started") {
+          state.work = "not_started";
+          state.userCompleted = "unknown";
+          state.missed = false;
+        } else if (mode === "in_progress") {
+          state.work = "in_progress";
+          state.missed = false;
+        } else if (mode === "done") {
+          state.work = "completed";
+          state.userCompleted = "confirmed";
+          state.missed = false;
+        } else if (mode === "missed") {
+          state.missed = true;
+          state.userCompleted = "denied";
+          state.work = "not_started";
+        } else {
+          state.dropped = true;
+          state.missed = false;
+          state.userCompleted = "confirmed";
+          state.work = "completed";
+        }
+        return { ...a, state };
+      }),
+    }));
+  };
+
+  const dueText = assessment.due.iso
+    ? formatInToronto(assessment.due.iso)
+    : assessment.due.label ?? "Unknown";
+
   return (
-    <div>
+    <div className="workspace assessment-workspace">
       <div className="page-header">
         <div>
-          <p style={{ margin: 0 }}>
+          <p className="small">
             <Link to={course ? `/courses/${course.id}` : "/"}>← {course?.code ?? "Course"}</Link>
           </p>
           <h1>{assessment.title}</h1>
           <p>
             {course?.code} · {assessment.type}
+            {assessment.weightPercent != null ? ` · ${assessment.weightPercent}% of course` : " · weight unknown"}
           </p>
+        </div>
+        <div className="workspace-actions">
+          {assessment.url && (
+            <a className="btn btn-primary" href={assessment.url} target="_blank" rel="noreferrer">
+              Open in CourseLink
+            </a>
+          )}
         </div>
       </div>
 
-      <section className="card" style={{ marginBottom: "1rem" }}>
-        <h2>Why this deadline?</h2>
-        <p>
-          <strong>Safety:</strong> {safety}
-        </p>
-        <p>
-          <strong>Due:</strong>{" "}
-          {assessment.due.iso ? formatInToronto(assessment.due.iso) : assessment.due.label ?? "Unknown"}
-        </p>
-        <p>
-          <strong>Provenance:</strong> {dueProv?.sourceType ?? "none"} / {dueProv?.sourceId ?? "—"}{" "}
-          (confidence {dueProv?.confidence ?? "—"})
-        </p>
-        {assessment.notes ? <pre style={{ whiteSpace: "pre-wrap" }}>{assessment.notes}</pre> : null}
-        {occ ? (
-          <p>
-            Linked occurrence: <code>{occ.id}</code> ({occ.date} {occ.startIso}–{occ.endIso})
-          </p>
-        ) : null}
-        {assessment.manualOverrides?.due ? (
-          <p>
-            <strong>User override active</strong> — rules will not overwrite.
-          </p>
-        ) : null}
-      </section>
-
-      <section className="card" style={{ marginBottom: "1rem" }}>
-        <h2>Grade / calculation state</h2>
-        <ul>
-          <li>Work: {assessment.state?.work}</li>
-          <li>Submission: {assessment.submissionState}</li>
-          <li>Missed: {String(assessment.state?.missed)} (missed ≠ auto zero)</li>
-          <li>Dropped (official): {String(row?.dropped)}</li>
-          <li>Provisional drop: {String(row?.provisionalDrop)}</li>
-          <li>Drop certainty: {row?.dropCertainty ?? "none"}</li>
-          <li>Score: {row?.percent ?? "unknown"}%</li>
-          <li>Weight: {assessment.weightPercent ?? "unknown"}%</li>
-        </ul>
-      </section>
-
-      <section className="card">
-        <h2>Debug inspector</h2>
-        <pre style={{ fontSize: "0.75rem", overflow: "auto", maxHeight: 320 }}>
-          {JSON.stringify(
-            {
-              assessment,
-              dueProvenance: dueProv,
-              occurrence: occ ?? null,
-              conflicts: data.conflicts.filter((c) => c.entityId === assessment.id),
-            },
-            null,
-            2,
+      <div className="workspace-grid">
+        <section className="card">
+          <h2>Status</h2>
+          <div className="stat-row">
+            <div>
+              <div className="stat-label">Due</div>
+              <div className="stat-value">{dueText}</div>
+              <div className="small muted">Timing: {safety === "EXACT_AUTHORITATIVE" ? "Confirmed" : safety === "DERIVED" ? "Derived from schedule" : safety === "APPROXIMATE" ? "Approximate" : "Unknown"}</div>
+            </div>
+            <div>
+              <div className="stat-label">Submission</div>
+              <div className="stat-value">{assessment.submissionState.replace(/_/g, " ")}</div>
+              {assessment.submittedAt && (
+                <div className="small muted">{formatInToronto(assessment.submittedAt)}</div>
+              )}
+            </div>
+            <div>
+              <div className="stat-label">Personal</div>
+              <div className="stat-value">{personalLabel(assessment)}</div>
+            </div>
+          </div>
+          {update && (
+            <div className="filters" style={{ marginTop: "0.75rem" }}>
+              {(
+                [
+                  ["not_started", "Not started"],
+                  ["in_progress", "In progress"],
+                  ["done", "Done"],
+                  ["missed", "Missed"],
+                  ["excused", "Excused"],
+                ] as const
+              ).map(([k, label]) => (
+                <button key={k} type="button" className="btn btn-sm" onClick={() => void setPersonal(k)}>
+                  {label}
+                </button>
+              ))}
+            </div>
           )}
-        </pre>
-      </section>
+          {assessment.state?.missed && (
+            <p className="callout callout-warn tight" style={{ marginTop: "0.75rem" }}>
+              Missed work is retained. GryphOS does not invent a zero.
+              {row?.provisionalDrop || row?.dropped
+                ? " A drop/best-N rule may absorb this once enough items exist."
+                : ""}
+            </p>
+          )}
+        </section>
+
+        <section className="card">
+          <h2>Grade</h2>
+          <ul className="clean-list">
+            <li>
+              Score:{" "}
+              <strong>
+                {row?.percent != null
+                  ? `${row.percent.toFixed(1)}%`
+                  : assessment.gradeDisplay ?? "Not graded yet"}
+              </strong>
+            </li>
+            <li>
+              Points:{" "}
+              {assessment.pointsEarned != null && assessment.pointsPossible != null
+                ? `${assessment.pointsEarned} / ${assessment.pointsPossible}`
+                : "—"}
+            </li>
+            <li>Dropped: {row?.dropped ? "Yes" : row?.provisionalDrop ? "Provisional" : "No"}</li>
+            <li>
+              Course standing:{" "}
+              {summary?.calculatedPercent != null ? `${summary.calculatedPercent.toFixed(1)}%` : "Unknown"}{" "}
+              on {summary?.completedWeight.toFixed(0) ?? "0"}% graded
+            </li>
+          </ul>
+          <Link to="/grades" className="small">
+            What-if calculator →
+          </Link>
+        </section>
+
+        <section className="card">
+          <h2>Attached / related content</h2>
+          {relatedContent.length === 0 ? (
+            <p className="muted small">No linked specs yet. Browse the course content tree after sync.</p>
+          ) : (
+            <ul className="clean-list">
+              {relatedContent.map((ci) => (
+                <li key={ci.id}>
+                  {ci.url ? (
+                    <a href={ci.url} target="_blank" rel="noreferrer">
+                      {ci.title}
+                    </a>
+                  ) : (
+                    ci.title
+                  )}{" "}
+                  <span className="badge">{ci.documentClass}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="card">
+          <h2>Announcements & clarifications</h2>
+          {relatedAnns.length === 0 ? (
+            <p className="muted small">No matching announcements.</p>
+          ) : (
+            <ul className="clean-list">
+              {relatedAnns.slice(0, 8).map((n) => (
+                <li key={n.id}>
+                  <strong>{n.title}</strong>
+                  <div className="small muted">{n.bodyText.slice(0, 160)}</div>
+                  {n.url && (
+                    <a className="small" href={n.url} target="_blank" rel="noreferrer">
+                      CourseLink
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="card">
+          <h2>Checklist</h2>
+          {checklist.length === 0 ? (
+            <p className="muted small">No personal checklist items linked. Use Quick Capture (Ctrl+K → add task).</p>
+          ) : (
+            <ul className="clean-list">
+              {checklist.map((t) => (
+                <li key={t.id}>
+                  {t.done ? "✓" : "○"} {t.title}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="card">
+          <h2>History</h2>
+          {history.length === 0 && conflicts.length === 0 ? (
+            <p className="muted small">No change events for this item yet.</p>
+          ) : (
+            <ul className="clean-list">
+              {history.map((h) => (
+                <li key={h.id}>
+                  <strong>{h.title}</strong>
+                  <div className="small">{h.detail}</div>
+                </li>
+              ))}
+              {conflicts.map((c) => (
+                <li key={c.id}>
+                  Conflict on {c.field}: {c.resolutionRule}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {data.preferences.developerMode && (
+          <section className="card" style={{ gridColumn: "1 / -1" }}>
+            <h2>Developer</h2>
+            <pre className="debug-pre">
+              {JSON.stringify(
+                {
+                  id: assessment.id,
+                  due: assessment.due,
+                  provenance: assessment.fieldProvenance,
+                  state: assessment.state,
+                  rules: rules.map((r) => ({ kind: r.kind, label: r.label })),
+                },
+                null,
+                2,
+              )}
+            </pre>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

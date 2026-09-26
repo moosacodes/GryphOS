@@ -353,6 +353,15 @@ export interface UserProfile {
   id: string;
 }
 
+export interface NotificationPrefs {
+  enabled: boolean;
+  dueTomorrow: boolean;
+  quizClosing: boolean;
+  midtermRoom: boolean;
+  deadlineChange: boolean;
+  gradePosted: boolean;
+}
+
 export interface Preferences {
   theme: ThemePreference;
   courseColors: Record<string, string>;
@@ -365,6 +374,11 @@ export interface Preferences {
     labSection?: string | null;
     tutorialSection?: string | null;
   }>;
+  /** Epoch ms when student last opened My Day */
+  lastCheckedAt?: number | null;
+  notifications?: NotificationPrefs;
+  /** Show provenance IDs / debug inspectors */
+  developerMode?: boolean;
 }
 
 
@@ -406,6 +420,8 @@ export interface ChangeEvent {
   createdAt: string;
   read: boolean;
   evidenceIds: string[];
+  beforeValue?: unknown;
+  afterValue?: unknown;
 }
 
 export interface UserTask {
@@ -505,6 +521,16 @@ export const DEFAULT_PREFERENCES: Preferences = {
   deadlineWarnHours: 48,
   selectedCourseIds: null,
   sectionConfigs: [],
+  lastCheckedAt: null,
+  notifications: {
+    enabled: true,
+    dueTomorrow: true,
+    quizClosing: true,
+    midtermRoom: true,
+    deadlineChange: true,
+    gradePosted: true,
+  },
+  developerMode: false,
 };
 
 export const DEFAULT_SYNC: SyncState = {

@@ -11,3 +11,7 @@ export * from "./deadlines";
 export * from "./facts";
 
 export * from "./priority";
+export * from "./myday";
+export * from "./search";
+export * from "./notifications";
+export * from "./capture";

@@ -116,6 +116,50 @@ export function SettingsPage({
 
       <div className="grid grid-2">
         <div className="card">
+          <h2>Product</h2>
+          <label className="small" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={!!data.preferences.developerMode}
+              onChange={(e) =>
+                void update((prev) => ({
+                  ...prev,
+                  preferences: { ...prev.preferences, developerMode: e.target.checked },
+                }))
+              }
+            />
+            Developer Mode (show deep diagnostics)
+          </label>
+          <label className="small" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+            <input
+              type="checkbox"
+              checked={data.preferences.notifications?.enabled !== false}
+              onChange={(e) =>
+                void update((prev) => ({
+                  ...prev,
+                  preferences: {
+                    ...prev.preferences,
+                    notifications: {
+                      dueTomorrow: true,
+                      quizClosing: true,
+                      midtermRoom: true,
+                      deadlineChange: true,
+                      gradePosted: true,
+                      ...prev.preferences.notifications,
+                      enabled: e.target.checked,
+                    },
+                  },
+                }))
+              }
+            />
+            Useful local notifications (due tomorrow, quiz closing, grades, deadline changes)
+          </label>
+          <p className="small muted" style={{ marginTop: 8 }}>
+            <a href="#/setup">Re-run semester setup</a>
+          </p>
+        </div>
+
+      <div className="card">
           <h2>Theme</h2>
           <div className="filters">
             {(["system", "light", "dark"] as ThemePreference[]).map((t) => (
