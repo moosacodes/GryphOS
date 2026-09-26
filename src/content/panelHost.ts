@@ -2,6 +2,7 @@
 
 const HOST_ID = "gryphos-panel-host";
 const FRAME_ID = "gryphos-panel-frame";
+const WIDTH = 400;
 
 function ensureHost(): HTMLElement {
   let host = document.getElementById(HOST_ID);
@@ -13,16 +14,20 @@ function ensureHost(): HTMLElement {
   Object.assign(host.style, {
     all: "initial",
     position: "fixed",
-    top: "0",
-    right: "0",
-    width: "380px",
-    maxWidth: "100vw",
-    height: "100vh",
+    top: "12px",
+    right: "12px",
+    bottom: "12px",
+    width: `${WIDTH}px`,
+    maxWidth: "calc(100vw - 24px)",
     zIndex: "2147483646",
-    boxShadow: "-8px 0 32px rgba(0,0,0,.28)",
-    transform: "translateX(105%)",
-    transition: "transform 160ms ease",
-    background: "#0f1115",
+    borderRadius: "14px",
+    overflow: "hidden",
+    boxShadow: "0 18px 50px rgba(0,0,0,.38), 0 0 0 1px rgba(255,255,255,.06)",
+    transform: "translateX(calc(100% + 28px))",
+    opacity: "0",
+    transition: "transform 220ms cubic-bezier(.2,.8,.2,1), opacity 180ms ease",
+    background: "#0e1014",
+    fontFamily: "system-ui, sans-serif",
   });
 
   const frame = document.createElement("iframe");
@@ -45,23 +50,25 @@ function ensureHost(): HTMLElement {
   Object.assign(close.style, {
     position: "absolute",
     top: "10px",
-    left: "-40px",
-    width: "32px",
-    height: "32px",
-    borderRadius: "8px 0 0 8px",
+    left: "-44px",
+    width: "36px",
+    height: "36px",
+    borderRadius: "10px",
     border: "0",
     cursor: "pointer",
-    background: "#c8102e",
+    background: "#b42318",
     color: "#fff",
     fontSize: "14px",
     fontWeight: "700",
-    boxShadow: "0 2px 8px rgba(0,0,0,.25)",
+    boxShadow: "0 4px 14px rgba(0,0,0,.3)",
   });
   close.addEventListener("click", () => setPanelOpen(false));
 
   host.appendChild(close);
   host.appendChild(frame);
   document.documentElement.appendChild(host);
+  // Force layout before animating open on first inject
+  void host.offsetWidth;
   return host;
 }
 
@@ -73,7 +80,13 @@ export function isPanelOpen(): boolean {
 export function setPanelOpen(open: boolean): void {
   const host = ensureHost();
   host.dataset.open = open ? "1" : "0";
-  host.style.transform = open ? "translateX(0)" : "translateX(105%)";
+  if (open) {
+    host.style.transform = "translateX(0)";
+    host.style.opacity = "1";
+  } else {
+    host.style.transform = "translateX(calc(100% + 28px))";
+    host.style.opacity = "0";
+  }
 }
 
 export function togglePanel(): boolean {

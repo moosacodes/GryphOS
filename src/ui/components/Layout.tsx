@@ -29,12 +29,23 @@ function syncLabel(status: ReturnType<typeof effectiveStatus>, lastSyncedAt: num
 
 export function Layout({ data }: { data: AppData }) {
   const status = effectiveStatus(data.sync);
+  const selected = data.courses.filter((c) =>
+    (data.preferences.selectedCourseIds ?? []).includes(c.id),
+  );
+
   return (
     <div className="app-shell">
       <nav className="nav" aria-label="Primary">
         <div className="nav-brand">
           <strong>gryph<span>OS</span></strong>
         </div>
+        {selected.length > 0 && (
+          <div className="nav-courses" aria-hidden>
+            {selected.slice(0, 8).map((c) => (
+              <span key={c.id} className="nav-swatch" style={{ background: c.color }} title={c.code} />
+            ))}
+          </div>
+        )}
         {LINKS.map((l) => (
           <NavLink
             key={l.to}
@@ -45,14 +56,14 @@ export function Layout({ data }: { data: AppData }) {
             {l.label}
           </NavLink>
         ))}
-        <div style={{ marginTop: "auto", padding: "0.75rem 0.5rem", display: "grid", gap: "0.5rem" }}>
+        <div className="nav-foot">
           <div className="small muted">
             Sync: <strong>{syncLabel(status, data.sync.lastSyncedAt)}</strong>
           </div>
           {status === "signed_out" && (
-            <div className="conflict-banner" role="alert" style={{ margin: 0, padding: "0.5rem" }}>
-              <div className="small" style={{ fontWeight: 600 }}>Signed out of CourseLink</div>
-              <button type="button" className="btn" style={{ marginTop: 6, width: "100%" }} onClick={() => void openCourseLink(true)}>
+            <div className="callout callout-danger tight" role="alert">
+              <div className="small" style={{ fontWeight: 650 }}>Signed out of CourseLink</div>
+              <button type="button" className="btn btn-sm" style={{ marginTop: 6, width: "100%" }} onClick={() => void openCourseLink(true)}>
                 Sign in
               </button>
             </div>
@@ -62,7 +73,7 @@ export function Layout({ data }: { data: AppData }) {
           )}
           <SyncButton />
           <p className="small muted" style={{ margin: 0 }}>
-            Runs in your browser (Brave / Opera GX) — no terminal needed.
+            Brave / Opera GX · no terminal
           </p>
         </div>
       </nav>
