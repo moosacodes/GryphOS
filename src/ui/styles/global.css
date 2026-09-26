@@ -1,5 +1,6 @@
 @import "./tokens.css";
 @import "./product.css";
+@import "./jarvis.css";
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -37,11 +38,7 @@ button, input, select, textarea {
   }
 }
 
-.app-shell {
-  display: grid;
-  grid-template-columns: var(--nav-w) 1fr;
-  min-height: 100vh;
-}
+/* .app-shell layout owned by jarvis.css */
 
 .nav {
   background: color-mix(in srgb, var(--bg-elev) 92%, transparent);

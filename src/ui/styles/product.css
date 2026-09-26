@@ -1,6 +1,6 @@
 /* Productization density — GryphOS School OS */
 
-:root { --nav-w: 232px; }
+/* nav-w unused in JARVIS shell */
 
 .nav-search-btn { width: 100%; margin: 0 0 0.55rem; font-size: 0.78rem; }
 .nav-badge {

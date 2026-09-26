@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { AppData } from "@/domain/types";
 import { searchLocal } from "@/engines/search";
 import { addCapturedTask } from "@/engines/capture";
-import { requestSync } from "@/shared/actions";
+import { openCourseLink, requestSync } from "@/shared/actions";
 
 type Mode = "command" | "search" | "capture";
 
@@ -45,14 +45,19 @@ export function CommandPalette({
 
   const commands = useMemo(
     () => [
-      { id: "today", label: "Open Today", run: () => nav("/") },
+      { id: "brief", label: "Open Brief / My Day", run: () => nav("/") },
       { id: "inbox", label: "Open Inbox", run: () => nav("/inbox") },
       { id: "calendar", label: "Open Calendar", run: () => nav("/calendar") },
-      { id: "grades", label: "Open Grades", run: () => nav("/grades") },
+      { id: "grades", label: "Open Grades & what-if", run: () => nav("/grades") },
       { id: "tasks", label: "Open Tasks", run: () => nav("/tasks") },
-      { id: "search", label: "Search everything", run: () => nav("/search") },
-      { id: "sync", label: "Sync CourseLink", run: () => void requestSync() },
+      { id: "search", label: "Search everything", run: () => setMode("search") },
+      { id: "sync", label: "Sync CourseLink now", run: () => void requestSync() },
+      { id: "signin", label: "Open CourseLink sign-in", run: () => void openCourseLink(true) },
       { id: "capture", label: "Quick capture task…", run: () => setMode("capture") },
+      { id: "setup", label: "Open Setup", run: () => nav("/setup") },
+      { id: "settings", label: "Open Settings", run: () => nav("/settings") },
+      { id: "docs", label: "Open Documents", run: () => nav("/documents") },
+      { id: "coverage", label: "Open Coverage", run: () => nav("/coverage") },
       ...data.courses
         .filter((c) => (data.preferences.selectedCourseIds ?? []).includes(c.id))
         .map((c) => ({
@@ -67,16 +72,17 @@ export function CommandPalette({
   const filteredCommands = commands.filter((c) =>
     !q.trim() ? true : c.label.toLowerCase().includes(q.toLowerCase()),
   );
-  const hits = mode === "search" || (mode === "command" && q.trim().length >= 2)
-    ? searchLocal(data, q, 12)
-    : [];
+  const hits =
+    mode === "search" || (mode === "command" && q.trim().length >= 2)
+      ? searchLocal(data, q, 12)
+      : [];
 
   const rows: Array<{ id: string; label: string; sub?: string; run: () => void }> =
     mode === "capture"
       ? [
           {
             id: "cap",
-            label: q.trim() ? `Add task: ${q.trim()}` : "Type a task…",
+            label: q.trim() ? `Capture: ${q.trim()}` : "Type a task…",
             sub: 'e.g. "2430 finish A2 testing tomorrow"',
             run: () => {
               if (!q.trim()) return;
@@ -102,16 +108,28 @@ export function CommandPalette({
   if (!open) return null;
 
   return (
-    <div className="palette-backdrop" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div className="palette-backdrop" role="dialog" aria-modal="true" aria-label="Command surface">
       <div className="palette">
         <div className="palette-modes">
-          <button type="button" className={mode === "command" ? "active" : ""} onClick={() => setMode("command")}>
-            Commands
+          <button
+            type="button"
+            className={mode === "command" ? "active" : ""}
+            onClick={() => setMode("command")}
+          >
+            Command
           </button>
-          <button type="button" className={mode === "search" ? "active" : ""} onClick={() => setMode("search")}>
+          <button
+            type="button"
+            className={mode === "search" ? "active" : ""}
+            onClick={() => setMode("search")}
+          >
             Search
           </button>
-          <button type="button" className={mode === "capture" ? "active" : ""} onClick={() => setMode("capture")}>
+          <button
+            type="button"
+            className={mode === "capture" ? "active" : ""}
+            onClick={() => setMode("capture")}
+          >
             Capture
           </button>
         </div>
@@ -123,7 +141,7 @@ export function CommandPalette({
               ? "2430 finish A2 testing tomorrow"
               : mode === "search"
                 ? "Search courses, docs, announcements…"
-                : "Type a command or search…"
+                : "What do you need?"
           }
           value={q}
           onChange={(e) => {
@@ -133,7 +151,7 @@ export function CommandPalette({
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") {
               e.preventDefault();
-              setActive((i) => Math.min(i + 1, rows.length - 1));
+              setActive((i) => Math.min(i + 1, Math.max(rows.length - 1, 0)));
             } else if (e.key === "ArrowUp") {
               e.preventDefault();
               setActive((i) => Math.max(i - 1, 0));
@@ -164,9 +182,13 @@ export function CommandPalette({
               </button>
             </li>
           ))}
-          {rows.length === 0 && <li className="muted small" style={{ padding: "0.75rem" }}>No matches</li>}
+          {rows.length === 0 && (
+            <li className="muted small" style={{ padding: "0.75rem" }}>
+              No matches
+            </li>
+          )}
         </ul>
-        <div className="palette-foot small muted">Ctrl+K · Esc to close · ↑↓ Enter</div>
+        <div className="palette-foot small muted">Ctrl+K · Esc · ↑↓ Enter — sync engines stay in the background</div>
       </div>
     </div>
   );

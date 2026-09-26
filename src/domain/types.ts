@@ -648,7 +648,7 @@ export interface AppData {
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
-  theme: "system",
+  theme: "dark",
   courseColors: {},
   deadlineWarnHours: 48,
   selectedCourseIds: null,

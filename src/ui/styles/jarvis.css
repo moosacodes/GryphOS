@@ -1,0 +1,445 @@
+/* JARVIS product shell — cinematic brief + command surface + living My Day */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 420px at 50% -8%, color-mix(in srgb, var(--hud) 14%, transparent), transparent 55%),
+    radial-gradient(700px 380px at 100% 0%, color-mix(in srgb, var(--focus) 8%, transparent), transparent 50%),
+    var(--bg);
+}
+
+.jarvis-top {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.85rem;
+  align-items: center;
+  padding: 0.7rem 1.1rem;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.jarvis-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  text-decoration: none;
+  color: inherit;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  font-size: 1.05rem;
+}
+.jarvis-brand:hover { text-decoration: none; }
+.jarvis-brand span { color: var(--hud); }
+.jarvis-mark {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--hud);
+  box-shadow: var(--glow);
+  animation: jarvis-pulse 2.8s ease-in-out infinite;
+}
+@keyframes jarvis-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.jarvis-cmd-trigger {
+  justify-self: center;
+  width: min(520px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--hud) 28%, var(--border));
+  background: color-mix(in srgb, var(--bg-elev) 88%, transparent);
+  color: var(--text-muted);
+  cursor: pointer;
+  box-shadow: var(--glow);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.jarvis-cmd-trigger:hover {
+  border-color: var(--hud);
+  color: var(--text);
+}
+.jarvis-cmd-trigger kbd {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  padding: 0.12rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.jarvis-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.jarvis-pulse-pills {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.pulse-pill {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--bg-muted);
+}
+.pulse-pill.hot {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--border));
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.pulse-pill.live {
+  border-color: color-mix(in srgb, var(--hud) 50%, var(--border));
+  color: var(--hud);
+  background: var(--accent-soft);
+}
+.pulse-pill.warn {
+  border-color: color-mix(in srgb, var(--warn) 50%, var(--border));
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.jarvis-systems {
+  position: relative;
+}
+.jarvis-systems-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 200px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  z-index: 50;
+}
+.jarvis-systems-menu a,
+.jarvis-systems-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+.jarvis-systems-menu a:hover,
+.jarvis-systems-menu button:hover {
+  background: var(--bg-muted);
+  text-decoration: none;
+}
+
+.main {
+  flex: 1;
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 3rem;
+}
+
+/* —— Cinematic brief —— */
+.brief {
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+.brief-hero {
+  padding: 1.4rem 0 0.4rem;
+}
+.brief-kicker {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hud);
+  margin: 0 0 0.55rem;
+}
+.brief-greeting {
+  margin: 0;
+  font-size: clamp(1.55rem, 3.2vw, 2.35rem);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+}
+.brief-headline {
+  margin: 0.45rem 0 0;
+  font-size: clamp(1.15rem, 2.2vw, 1.55rem);
+  font-weight: 550;
+  color: color-mix(in srgb, var(--text) 88%, var(--hud));
+  letter-spacing: -0.02em;
+}
+.brief-sub {
+  margin: 0.55rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+.brief-tone-urgent .brief-headline { color: var(--danger); }
+.brief-tone-offline .brief-headline,
+.brief-tone-idle .brief-headline { color: var(--text-muted); }
+.brief-tone-focus .brief-headline { color: var(--hud); }
+
+.brief-system {
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--border));
+  background: var(--warn-soft);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.9rem;
+}
+.brief-system.danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: var(--danger-soft);
+}
+
+.brief-beats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.65rem;
+}
+.beat-card {
+  text-align: left;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elev) 92%, transparent);
+  border-radius: var(--radius);
+  padding: 0.8rem 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  color: inherit;
+  font: inherit;
+}
+.beat-card:hover {
+  border-color: color-mix(in srgb, var(--hud) 45%, var(--border));
+  box-shadow: var(--glow);
+  transform: translateY(-1px);
+}
+.beat-card.sec-needs_answer {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+  background: color-mix(in srgb, var(--warn-soft) 55%, var(--bg-elev));
+}
+.beat-card.sec-right_now {
+  border-color: color-mix(in srgb, var(--hud) 50%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 70%, var(--bg-elev));
+}
+.beat-kicker {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  color: var(--hud);
+  margin-bottom: 0.35rem;
+}
+.beat-card.sec-needs_answer .beat-kicker { color: var(--warn); }
+.beat-line { font-weight: 650; letter-spacing: -0.02em; }
+.beat-detail { margin-top: 0.25rem; color: var(--text-muted); font-size: 0.84rem; }
+
+/* —— Living My Day —— */
+.living-day {
+  margin-top: 0.5rem;
+}
+.living-day-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+.living-day-head h2 {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.living-clock {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--hud-dim);
+}
+
+.myday-section { margin-bottom: 1.25rem; }
+.myday-section > h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.myday-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.myday-row {
+  display: grid;
+  grid-template-columns: 4px 1fr;
+  gap: 0.75rem;
+  background: color-mix(in srgb, var(--bg-elev) 94%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.85rem;
+  position: relative;
+  overflow: hidden;
+}
+.myday-row.actionable {
+  border-color: color-mix(in srgb, var(--hud) 40%, var(--border));
+}
+.myday-row.kind-class.actionable::after,
+.myday-row.kind-lab.actionable::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--hud) 10%, transparent), transparent 40%);
+  animation: living-sweep 3.5s ease-in-out infinite;
+}
+@keyframes living-sweep {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.85; }
+}
+.myday-rail { border-radius: 2px; min-height: 100%; }
+.myday-top { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; margin-bottom: 0.2rem; }
+.myday-code { font-weight: 750; font-size: 0.82rem; letter-spacing: -0.02em; }
+.myday-title { font-weight: 650; font-size: 0.98rem; }
+.myday-sub { color: var(--text-muted); font-size: 0.84rem; margin-top: 0.15rem; }
+.myday-ctas { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.55rem; }
+.myday-links { display: flex; gap: 0.75rem; margin-top: 0.4rem; }
+.sec-needs_answer .myday-row { background: color-mix(in srgb, var(--warn-soft) 55%, var(--bg-elev)); }
+.sec-right_now .myday-row { background: color-mix(in srgb, var(--accent-soft) 55%, var(--bg-elev)); }
+
+.standing-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+}
+.standing-chip {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+}
+
+/* —— Command surface (palette) —— */
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(2, 6, 12, 0.62);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 1rem 1rem;
+}
+.palette {
+  width: min(640px, 100%);
+  background: var(--bg-elev);
+  border: 1px solid color-mix(in srgb, var(--hud) 30%, var(--border));
+  border-radius: 14px;
+  box-shadow: var(--glow), var(--shadow);
+  overflow: hidden;
+}
+.palette-modes {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.55rem 0.65rem 0;
+}
+.palette-modes button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.palette-modes button.active {
+  background: var(--accent-soft);
+  color: var(--hud);
+}
+.palette-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  padding: 0.85rem 1rem;
+  font-size: 1.05rem;
+  outline: none;
+}
+.palette-list { list-style: none; margin: 0; padding: 0.35rem; max-height: 360px; overflow: auto; }
+.palette-list button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.palette-list button.active,
+.palette-list button:hover {
+  background: var(--bg-muted);
+}
+.palette-foot {
+  padding: 0.45rem 0.85rem 0.65rem;
+  border-top: 1px solid var(--line);
+}
+
+.page-chrome {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.page-chrome a.back {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.page-chrome h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+}
+
+@media (max-width: 720px) {
+  .jarvis-top {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+  .jarvis-cmd-trigger { width: 100%; }
+  .jarvis-top-actions { justify-content: space-between; }
+}

@@ -1,19 +1,42 @@
+/* gryphOS JARVIS tokens — dark-first cinematic HUD, light still supported */
 :root {
   --font: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", "Cascadia Code", ui-monospace, monospace;
-  --radius: 8px;
-  --radius-sm: 5px;
-  --shadow: 0 1px 0 rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
-  --nav-w: 208px;
+  --display: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 0 0 1px rgba(125, 211, 252, 0.06), 0 18px 48px rgba(0, 0, 0, 0.45);
+  --nav-w: 0px;
+  --bg: #07090d;
+  --bg-elev: #0e131b;
+  --bg-muted: #151c28;
+  --border: #243041;
+  --text: #e8eef8;
+  --text-muted: #8b98ad;
+  --accent: #5eead4;
+  --accent-soft: rgba(94, 234, 212, 0.12);
+  --ok: #4ade80;
+  --ok-soft: rgba(74, 222, 128, 0.12);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.14);
+  --danger: #fb7185;
+  --danger-soft: rgba(251, 113, 133, 0.14);
+  --focus: #7dd3fc;
+  --line: rgba(148, 163, 184, 0.12);
+  --hud: #5eead4;
+  --hud-dim: rgba(94, 234, 212, 0.35);
+  --glow: 0 0 24px rgba(94, 234, 212, 0.18);
+}
+
+[data-theme="light"] {
   --bg: #f3f1ec;
   --bg-elev: #fffcf7;
   --bg-muted: #e9e4da;
   --border: #d5cfc3;
   --text: #171410;
   --text-muted: #5f574c;
-
-  --accent: #b42318;
-  --accent-soft: #f8e4e1;
+  --accent: #0f766e;
+  --accent-soft: #d5f5f0;
   --ok: #0f6a4b;
   --ok-soft: #d9f0e6;
   --warn: #9a6700;
@@ -21,25 +44,33 @@
   --danger: #9f1239;
   --danger-soft: #ffe4e8;
   --focus: #1d4e89;
+  --shadow: 0 1px 0 rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
   --line: rgba(23, 20, 16, 0.08);
+  --hud: #0f766e;
+  --hud-dim: rgba(15, 118, 110, 0.35);
+  --glow: 0 0 18px rgba(15, 118, 110, 0.12);
 }
 
+/* legacy dark attr still works */
 [data-theme="dark"] {
-  --bg: #0e1014;
-  --bg-elev: #171a21;
-  --bg-muted: #222733;
-  --border: #2f3645;
-  --text: #eef1f6;
-  --text-muted: #9aa3b5;
-  --accent: #ff6b6b;
-  --accent-soft: #3a1f24;
-  --ok: #3dd68c;
-  --ok-soft: #163528;
-  --warn: #f0c14a;
-  --warn-soft: #3a2f12;
-  --danger: #ff7a90;
-  --danger-soft: #3a1c26;
-  --focus: #7db4ff;
-  --shadow: 0 1px 0 rgba(255,255,255,0.03), 0 12px 28px rgba(0,0,0,0.35);
-  --line: rgba(255, 255, 255, 0.06);
+  --bg: #07090d;
+  --bg-elev: #0e131b;
+  --bg-muted: #151c28;
+  --border: #243041;
+  --text: #e8eef8;
+  --text-muted: #8b98ad;
+  --accent: #5eead4;
+  --accent-soft: rgba(94, 234, 212, 0.12);
+  --ok: #4ade80;
+  --ok-soft: rgba(74, 222, 128, 0.12);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.14);
+  --danger: #fb7185;
+  --danger-soft: rgba(251, 113, 133, 0.14);
+  --focus: #7dd3fc;
+  --shadow: 0 0 0 1px rgba(125, 211, 252, 0.06), 0 18px 48px rgba(0, 0, 0, 0.45);
+  --line: rgba(148, 163, 184, 0.12);
+  --hud: #5eead4;
+  --hud-dim: rgba(94, 234, 212, 0.35);
+  --glow: 0 0 24px rgba(94, 234, 212, 0.18);
 }

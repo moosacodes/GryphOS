@@ -175,7 +175,7 @@ export function Panel() {
       )}
 
       <section className="panel-section grow">
-        <h2>My Day</h2>
+        <h2>Brief</h2>
         <div className="panel-list">
           {spotlight.length === 0 ? (
             <div className="empty-mini">
@@ -191,7 +191,7 @@ export function Panel() {
 
       <footer className="panel-foot">
         <button type="button" className="btn btn-sm" style={{ flex: 1 }} onClick={() => void openApp()}>
-          Open full app
+          Open Brief
         </button>
         <span className="small muted">{selected.length} courses</span>
       </footer>

@@ -29,7 +29,8 @@ Use the standard `chrome.*` APIs — both browsers expose them. Do not add a
 - `src/engines` — grades, workload, health, status, ICS
 - `src/content` — CourseLink content script entry
 - `src/background` — MV3 service worker
-- `src/ui` — full React app (bundled into dist/)
+- `src/ui` — full React app (JARVIS shell: Brief + command surface + living My Day)
+- `src/engines/brief.ts` — cinematic brief copy (deterministic)
 - `src/popup` — compact popup (bundled into dist/)
 - `tests` / `fixtures` — sanitized automated tests
 - `docs` — architecture docs
@@ -47,6 +48,7 @@ Use the standard `chrome.*` APIs — both browsers expose them. Do not add a
 ## Architectural invariants
 
 1. **No chatbot / no LLM API** for product function
+1b. **Product shell is JARVIS-style** — brief + commands + living My Day; sync/doc engines are backend, not CRUD home
 2. **Never invent** academic facts — use unknown / approximate / conflicting
 3. UI consumes **canonical** model only, never raw CourseLink payloads
 4. Sync is polite: bounded concurrency; 403/404 are non-fatal per tool

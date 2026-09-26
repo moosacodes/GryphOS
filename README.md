@@ -3,28 +3,31 @@
 Privacy-first, local-first academic OS for University of Guelph CourseLink
 (D2L Brightspace). Brave / Opera GX / Chromium.
 
+**v2 — JARVIS for uni.** Cinematic day brief, command surface, living My Day.
+Sync and document intelligence stay in the background — not a dashboard CRUD app.
+
 No chatbot, backend, LLM, passwords, or telemetry. Uses your signed-in CourseLink
 session in the same browser. All academic data stays on your device.
 
-## What works after Sync (v1.8)
+## Product shell
+
+- **System Brief** — spoken-style opening: what’s live, what needs you, what’s tonight
+- **Command surface** — Ctrl+K is the primary way to move (search, sync, open courses, capture)
+- **Living My Day** — Right now · Next · Tonight · Coming up · Since last checked · Needs your answer
+- Secondary systems (Inbox, Grades, Calendar, Courses…) live under **Systems** / commands — not a left-nav CRUD farm
+
+## What Sync fills in (backend)
 
 When you are signed in on CourseLink and hit **Sync**:
 
-- **Courses** you select (dropbox, quizzes, grades, news, content TOC when the API allows)
-- **Class times** from CourseLink calendar lecture/lab events → My Day Right now / Next / Tonight
-- **Assessments** with due dates, submission state, and grades when Brightspace returns them
-- **Outline discovery** — finds + parses syllabus PDFs/HTML when downloadable; applies blueprints
-  into assessments/policies. Status per course is honest (`parsed` / `found` / `blocked` / `none`)
-- **Announcements** + deadline-change signals when News is readable
-- **My Day** timeline: Right now · Next · Tonight · Coming up · Since last checked · Needs your answer
-- **Assessment / course workspaces** with linked content, clarifications, and feedback when present
-- **Inbox** for real changes (deadline moves, new items, document versions)
-- **Local search** across what Sync actually stored
+- Courses you select (dropbox, quizzes, grades, news, content TOC when the API allows)
+- Class times from CourseLink calendar → My Day Right now / Next / Tonight
+- Assessments with due dates, submission state, and grades when Brightspace returns them
+- Outline discovery + document intelligence (layout PDF understanding)
+- Announcements + deadline-change signals when News is readable
 
-Honest limits: many Brightspace student routes return 403; outline file download is often blocked
-even when Content UI shows the PDF; DOCX/scanned PDFs parse poorly; final exam dates appear only if
-outline/calendar provides them. Empty states explain *why* (signed out, no calendar events, outline
-blocked) instead of pretending features work.
+Honest limits: many Brightspace student routes return 403; outline downloads are often
+blocked; DOCX/scans parse poorly. Empty states explain *why*.
 
 ## Install
 
@@ -37,8 +40,8 @@ Load unpacked `dist/` in Brave / Opera GX / Chrome extensions page.
 
 1. Sign in to [CourseLink](https://courselink.uoguelph.ca) in the **same browser**
 2. Open any CourseLink page
-3. Toolbar → **Open panel** (or full app) → **Sync**
-4. Open **My Day** — you should see class times and deadlines from real data
+3. Toolbar → **Open Brief** (or full app) → **Sync**
+4. Read the brief — then drive the semester with **Ctrl+K**
 
 Optional: Setup → import a timetable ICS if CourseLink calendar has no lecture/lab events.
 

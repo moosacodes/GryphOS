@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "gryphOS",
-  "version": "1.8.0",
-  "description": "Privacy-first local-first academic OS for University of Guelph CourseLink. Works on Chromium browsers (Brave, Opera GX, Chrome).",
+  "version": "2.0.0",
+  "description": "gryphOS \u2014 local CourseLink academic OS. Cinematic brief, command surface, living My Day. Brave / Opera GX / Chromium.",
   "permissions": [
     "storage",
     "tabs",

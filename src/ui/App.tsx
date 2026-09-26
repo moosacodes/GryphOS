@@ -1,7 +1,7 @@
-﻿import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useAppData } from "./hooks/useStore";
 import { useTheme } from "./hooks/useTheme";
-import { Layout } from "./components/Layout";
+import { Shell } from "./components/Shell";
 import { TodayPage } from "./pages/TodayPage";
 import { AssessmentDetailPage } from "./pages/AssessmentDetailPage";
 import { CalendarPage } from "./pages/CalendarPage";
@@ -23,7 +23,10 @@ export function App() {
   if (!ready) {
     return (
       <div className="boot-screen" style={{ padding: "2rem", color: "var(--text-muted)" }}>
-        Loading gryphOS...
+        <div style={{ fontFamily: "var(--mono)", letterSpacing: "0.14em", fontSize: "0.75rem" }}>
+          GRYPHOS
+        </div>
+        <div style={{ marginTop: "0.55rem" }}>Systems coming online…</div>
       </div>
     );
   }
@@ -35,10 +38,13 @@ export function App() {
   return (
     <HashRouter>
       <Routes>
-        <Route element={<Layout data={data} update={update} />}>
+        <Route element={<Shell data={data} update={update} />}>
           <Route index element={<TodayPage data={data} update={update} />} />
           <Route path="inbox" element={<InboxPage data={data} update={update} />} />
-          <Route path="assessment/:id" element={<AssessmentDetailPage data={data} update={update} />} />
+          <Route
+            path="assessment/:id"
+            element={<AssessmentDetailPage data={data} update={update} />}
+          />
           <Route path="calendar" element={<CalendarPage data={data} />} />
           <Route path="courses" element={<CoursesPage data={data} />} />
           <Route path="courses/:courseId" element={<CourseDetailPage data={data} />} />
@@ -57,4 +63,3 @@ export function App() {
     </HashRouter>
   );
 }
-
